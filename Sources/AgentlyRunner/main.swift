@@ -94,6 +94,9 @@ struct AgentlyRunner: AsyncParsableCommand {
         let graphBuilder = AccessibilityGraphBuilder()
         let graph = try graphBuilder.buildGraph()
         
+        // Always save to file for inspection
+        try saveGraphToFile(graph, filename: "accessibility_graph_\(Int(Date().timeIntervalSince1970))")
+        
         switch format {
         case .json:
             let encoder = JSONEncoder()
@@ -118,6 +121,9 @@ struct AgentlyRunner: AsyncParsableCommand {
         let graphBuilder = AccessibilityGraphBuilder()
         let initialGraph = try graphBuilder.buildGraph()
         logger.info("Built initial graph with \(initialGraph.elements.count) elements")
+        
+        // Save initial graph for inspection
+        try saveGraphToFile(initialGraph, filename: "initial_graph_\(Int(Date().timeIntervalSince1970))")
         
         // 2. Call Python planner to generate action plan
         let plannerResult = try await callPythonPlanner(task: taskDescription, graph: initialGraph)
@@ -146,6 +152,10 @@ struct AgentlyRunner: AsyncParsableCommand {
                     
                     // Try to recover
                     currentGraph = try graphBuilder.buildGraph()
+                    
+                    // Save recovery graph for inspection
+                    try saveGraphToFile(currentGraph, filename: "recovery_graph_\(Int(Date().timeIntervalSince1970))")
+                    
                     let recoveryPlan = try await callPythonPlannerForRecovery(
                         task: taskDescription,
                         graph: currentGraph,
@@ -169,6 +179,9 @@ struct AgentlyRunner: AsyncParsableCommand {
                     // Small delay to let UI settle
                     try await Task.sleep(for: .milliseconds(500))
                     currentGraph = try graphBuilder.buildGraph()
+                    
+                    // Save graph after each action for inspection
+                    try saveGraphToFile(currentGraph, filename: "action_\(index + 1)_graph_\(Int(Date().timeIntervalSince1970))")
                 }
                 
             } catch {
@@ -220,23 +233,42 @@ struct AgentlyRunner: AsyncParsableCommand {
         process.executableURL = URL(fileURLWithPath: "/bin/bash")
         process.arguments = ["-c", "cd \(FileManager.default.currentDirectoryPath) && source venv/bin/activate && python3 -m planner.main --task '\(task)' --graph '\(tempGraphFile.path)'"]
         
-        let pipe = Pipe()
-        process.standardOutput = pipe
+        let outputPipe = Pipe()
+        let errorPipe = Pipe()
+        process.standardOutput = outputPipe
+        process.standardError = errorPipe
         
         try process.run()
         process.waitUntilExit()
         
-        let data = pipe.fileHandleForReading.readDataToEndOfFile()
-        guard let output = String(data: data, encoding: .utf8) else {
+        let outputData = outputPipe.fileHandleForReading.readDataToEndOfFile()
+        let errorData = errorPipe.fileHandleForReading.readDataToEndOfFile()
+        
+        // Log stderr for debugging
+        if let errorOutput = String(data: errorData, encoding: .utf8), !errorOutput.isEmpty {
+            let logger = Logger(label: "PythonPlanner")
+            logger.debug("Python planner stderr: \(errorOutput)")
+        }
+        
+        guard let output = String(data: outputData, encoding: .utf8) else {
             throw AgentlyError.planningFailed("No output from planner")
         }
         
         // Clean up
         try? FileManager.default.removeItem(at: tempGraphFile)
         
+        // Debug the actual output
+        let logger = Logger(label: "PythonPlanner")
+        logger.debug("Python planner stdout: \(output)")
+        
+        // Check for process exit code
+        if process.terminationStatus != 0 {
+            throw AgentlyError.planningFailed("Python planner exited with code \(process.terminationStatus)")
+        }
+        
         guard let jsonData = output.data(using: .utf8),
               let result = try JSONSerialization.jsonObject(with: jsonData) as? [String: Any] else {
-            throw AgentlyError.planningFailed("Invalid JSON response from planner")
+            throw AgentlyError.planningFailed("Invalid JSON response from planner. Output was: \(output)")
         }
         
         return result
@@ -257,7 +289,15 @@ struct AgentlyRunner: AsyncParsableCommand {
     private func parseAction(from data: [String: Any]) -> SkillAction {
         let type = ActionType(rawValue: data["type"] as? String ?? "") ?? .click
         let targetElementId = data["target_element_id"] as? String
-        let parameters = data["parameters"] as? [String: String] ?? [:]
+        
+        // Convert all parameter values to strings to handle mixed types from JSON
+        var parameters: [String: String] = [:]
+        if let rawParameters = data["parameters"] as? [String: Any] {
+            for (key, value) in rawParameters {
+                parameters[key] = String(describing: value)
+            }
+        }
+        
         let description = data["description"] as? String ?? "Unknown action"
         
         return SkillAction(
@@ -296,6 +336,62 @@ struct AgentlyRunner: AsyncParsableCommand {
                 logger.info("  - \(element.role): '\(label)' [\(element.id)]")
             }
         }
+    }
+    
+    private func saveGraphToFile(_ graph: UIGraph, filename: String) throws {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = .prettyPrinted
+        encoder.dateEncodingStrategy = .iso8601
+        
+        let data = try encoder.encode(graph)
+        
+        // Create logs directory if it doesn't exist
+        let logsDir = URL(fileURLWithPath: "logs")
+        try FileManager.default.createDirectory(at: logsDir, withIntermediateDirectories: true)
+        
+        // Save full graph
+        let fullGraphFile = logsDir.appendingPathComponent("\(filename).json")
+        try data.write(to: fullGraphFile)
+        
+        // Also save a summary with application breakdown
+        let summary = createGraphSummary(graph)
+        let summaryFile = logsDir.appendingPathComponent("\(filename)_summary.txt")
+        try summary.write(to: summaryFile, atomically: true, encoding: .utf8)
+        
+        print("📊 Saved graph (\(graph.elements.count) elements) to: \(fullGraphFile.path)")
+        print("📋 Saved summary to: \(summaryFile.path)")
+    }
+    
+    private func createGraphSummary(_ graph: UIGraph) -> String {
+        var summary = """
+        Accessibility Graph Summary
+        ===========================
+        Timestamp: \(graph.timestamp)
+        Active Application: \(graph.activeApplication ?? "Unknown")
+        Total Elements: \(graph.elements.count)
+        
+        Applications and Element Counts:
+        """
+        
+        // Group elements by application
+        let appCounts = Dictionary(grouping: graph.elements.values, by: { $0.applicationName })
+            .mapValues { $0.count }
+            .sorted { $0.value > $1.value }
+        
+        for (app, count) in appCounts {
+            summary += "\n- \(app): \(count) elements"
+        }
+        
+        summary += "\n\nTop Element Roles:"
+        let roleCounts = Dictionary(grouping: graph.elements.values, by: { $0.role })
+            .mapValues { $0.count }
+            .sorted { $0.value > $1.value }
+        
+        for (role, count) in Array(roleCounts.prefix(10)) {
+            summary += "\n- \(role): \(count)"
+        }
+        
+        return summary
     }
 }
 

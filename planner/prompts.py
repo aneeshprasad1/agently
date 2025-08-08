@@ -91,7 +91,17 @@ Available elements of interest:
 
 Generate a step-by-step action plan to complete this task. 
 
-Respond with a JSON object:
+IMPORTANT GUIDELINES:
+- If the task involves opening an application (like Messages) that is not currently the active application, ALWAYS use Spotlight search instead of clicking on app elements
+- Use this reliable pattern for opening apps:
+  1. key_press with "Command+Space" to open Spotlight
+  2. type the application name (e.g., "Messages")
+  3. key_press with "Return" to launch the app
+  4. wait for 2 seconds for the app to load
+- Only after the app is open and active, interact with specific elements within it
+- For clicking on contacts or UI elements, use a single click action rather than focus + click
+
+Respond with a JSON object (NO COMMENTS ALLOWED - pure JSON only):
 {{
     "reasoning": "Brief explanation of your approach",
     "actions": [
@@ -107,7 +117,7 @@ Respond with a JSON object:
 
 Consider:
 1. Current UI state and available elements
-2. Most efficient action sequence
+2. Most efficient action sequence (prefer Spotlight for app launching)
 3. Error handling and validation
 4. User experience and accessibility""",
         required_variables=["task", "ui_graph_summary", "relevant_elements"]
@@ -128,7 +138,7 @@ Consider:
 
 Return the element ID that best matches the intent, or null if none suitable.
 
-Response format:
+Response format (NO COMMENTS ALLOWED - pure JSON only):
 {{
     "element_id": "selected_id_or_null",
     "reasoning": "Why this element was chosen",
@@ -149,7 +159,7 @@ Progress so far: {completed_actions}
 
 Generate a recovery plan to continue toward the original goal.
 
-Response format:
+Response format (NO COMMENTS ALLOWED - pure JSON only):
 {{
     "recovery_strategy": "brief_description",
     "actions": [

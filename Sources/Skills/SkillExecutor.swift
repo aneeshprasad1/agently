@@ -83,6 +83,11 @@ public class SkillExecutor {
             y: element.position.y + element.size.height / 2
         )
         
+        // If this is an application element that should bring the app to front, activate it first
+        if shouldActivateApplication(for: element) {
+            try activateApplication(element.applicationName)
+        }
+        
         // Try accessibility action first
         if let axElement = try? findAXElement(for: element) {
             let result = AXUIElementPerformAction(axElement, kAXPressAction as CFString)
@@ -195,6 +200,11 @@ public class SkillExecutor {
             throw SkillError.elementNotFound
         }
         
+        // If this is an application element that should bring the app to front, activate it first
+        if shouldActivateApplication(for: element) {
+            try activateApplication(element.applicationName)
+        }
+        
         // Try accessibility action first
         if let axElement = try? findAXElement(for: element) {
             let result = AXUIElementPerformAction(axElement, "AXFocus" as CFString)
@@ -269,6 +279,55 @@ public class SkillExecutor {
         
         if clickCount == 2 {
             usleep(100_000) // Additional delay for double click
+        }
+    }
+    
+    // MARK: - Application Activation
+    
+    private func shouldActivateApplication(for element: UIElement) -> Bool {
+        // Disable automatic app activation since we're using Spotlight for app launching
+        // This prevents hanging on AppleScript activation
+        return false
+    }
+    
+    private func activateApplication(_ appName: String) throws {
+        logger.info("Attempting to activate application: \(appName)")
+        
+        // Method 1: Use AppleScript for reliable activation
+        let script = """
+            tell application "\(appName)"
+                activate
+                delay 0.5
+            end tell
+        """
+        
+        if let appleScript = NSAppleScript(source: script) {
+            var errorDict: NSDictionary?
+            let result = appleScript.executeAndReturnError(&errorDict)
+            
+            if errorDict == nil {
+                logger.info("Successfully activated application via AppleScript: \(appName)")
+                // Give extra time for the app to fully come to foreground
+                usleep(750_000) // 750ms delay
+                return
+            } else {
+                logger.debug("AppleScript activation failed: \(errorDict ?? [:])")
+            }
+        }
+        
+        // Method 2: Fallback to NSRunningApplication
+        let runningApps = NSWorkspace.shared.runningApplications
+        guard let app = runningApps.first(where: { $0.localizedName == appName }) else {
+            logger.warning("Application \(appName) not found in running applications")
+            return
+        }
+        
+        let success = app.activate(options: [.activateAllWindows])
+        if success {
+            logger.info("Successfully activated application via NSRunningApplication: \(appName)")
+            usleep(500_000) // 500ms delay
+        } else {
+            logger.warning("Failed to activate application: \(appName)")
         }
     }
     

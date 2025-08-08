@@ -95,6 +95,9 @@ class AgentlyPlanner:
                     clean_response = clean_response[:-3]  # Remove trailing '```'
                 clean_response = clean_response.strip()
                 
+                # Remove JavaScript-style comments that break JSON parsing
+                clean_response = self._remove_json_comments(clean_response)
+                
                 plan_data = json.loads(clean_response)
             except json.JSONDecodeError as e:
                 logger.error(f"JSON decode error: {e}")
@@ -155,6 +158,9 @@ class AgentlyPlanner:
                 clean_response = clean_response[:-3]
             clean_response = clean_response.strip()
             
+            # Remove JavaScript-style comments that break JSON parsing
+            clean_response = self._remove_json_comments(clean_response)
+            
             recovery_data = json.loads(clean_response)
             
             return ActionPlan(
@@ -201,6 +207,9 @@ class AgentlyPlanner:
             if clean_response.endswith('```'):
                 clean_response = clean_response[:-3]
             clean_response = clean_response.strip()
+            
+            # Remove JavaScript-style comments that break JSON parsing
+            clean_response = self._remove_json_comments(clean_response)
             
             selection_data = json.loads(clean_response)
             element_id = selection_data.get("element_id")
@@ -305,3 +314,57 @@ class AgentlyPlanner:
             })
         
         return json.dumps(formatted, indent=2)
+    
+    def _remove_json_comments(self, json_string: str) -> str:
+        """Remove JavaScript-style comments from JSON string."""
+        import re
+        
+        # Remove single-line comments (// comment)
+        # This regex matches // followed by anything up to end of line
+        # but avoids removing // inside quoted strings
+        lines = json_string.split('\n')
+        cleaned_lines = []
+        
+        for line in lines:
+            # Simple approach: if line contains //, check if it's inside quotes
+            if '//' in line:
+                # Find all quote positions
+                quote_positions = []
+                in_quotes = False
+                escape_next = False
+                
+                for i, char in enumerate(line):
+                    if escape_next:
+                        escape_next = False
+                        continue
+                    if char == '\\':
+                        escape_next = True
+                        continue
+                    if char == '"':
+                        quote_positions.append(i)
+                        in_quotes = not in_quotes
+                
+                # Find // that's not inside quotes
+                comment_start = -1
+                i = 0
+                while i < len(line) - 1:
+                    if line[i:i+2] == '//':
+                        # Check if this // is inside quotes
+                        inside_quotes = False
+                        quote_count = 0
+                        for quote_pos in quote_positions:
+                            if quote_pos < i:
+                                quote_count += 1
+                        inside_quotes = quote_count % 2 == 1
+                        
+                        if not inside_quotes:
+                            comment_start = i
+                            break
+                    i += 1
+                
+                if comment_start >= 0:
+                    line = line[:comment_start].rstrip()
+            
+            cleaned_lines.append(line)
+        
+        return '\n'.join(cleaned_lines)
