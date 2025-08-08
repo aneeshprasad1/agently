@@ -1,0 +1,16 @@
+# Core dependencies
+pyobjc>=10.0
+openai>=1.0.0
+pydantic>=2.0.0
+sqlalchemy>=2.0.0
+pytest>=7.0.0
+black>=23.0.0
+ruff>=0.1.0
+mypy>=1.0.0
+
+# Optional dependencies for local LLM support
+# ollama>=0.1.0  # Uncomment if using local models
+
+# Development dependencies
+pytest-cov>=4.0.0
+pre-commit>=3.0.0

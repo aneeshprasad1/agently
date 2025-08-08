@@ -1,0 +1,69 @@
+# Swift Package Manager
+.build/
+Packages/
+xcuserdata/
+*.xcworkspace
+
+# Xcode
+build/
+DerivedData/
+*.pbxuser
+*.mode1v3
+*.mode2v3
+*.perspectivev3
+*.xccheckout
+*.moved-aside
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+.venv/
+pip-log.txt
+pip-delete-this-directory.txt
+.pytest_cache/
+.mypy_cache/
+.coverage
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Project specific
+agently_graph.json
+agently_plan.json
+agently_screenshot_*.png
+/tmp/agently_*
+
+# Memory database
+memory.db
+memory.db-journal
+
+# Logs
+*.log
+logs/
+
+# Distribution
+dist/
+*.tar.gz
+*.zip
+
+# Environment variables
+.env
+.env.local
