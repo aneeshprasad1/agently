@@ -40,3 +40,4 @@ fi
 
 echo "📁 All logs saved to logs/ directory"
 echo "🔍 Check logs/*_summary.txt files for detailed breakdowns"
+
