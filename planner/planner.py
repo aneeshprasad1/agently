@@ -4,13 +4,17 @@ Main planner implementation for Agently.
 
 import json
 import logging
+import os
 from dataclasses import dataclass
+from datetime import datetime
+from pathlib import Path
 from typing import Dict, List, Optional, Any
 
 import openai
 from openai import OpenAI
 
 from .prompts import SystemPrompts, TaskPrompts
+from .conversation_logger import ConversationLogger
 
 
 logger = logging.getLogger(__name__)
@@ -49,11 +53,20 @@ class AgentlyPlanner:
         model: str = "gpt-4o-mini",
         api_key: Optional[str] = None,
         temperature: float = 0.1,
-        max_tokens: int = 2000
+        max_tokens: int = 2000,
+        log_dir: Optional[str] = None
     ):
         self.model = model
         self.temperature = temperature
         self.max_tokens = max_tokens
+        
+        # Initialize conversation logger
+        self.conversation_logger = ConversationLogger(
+            log_dir=log_dir,
+            model=model,
+            temperature=temperature,
+            max_tokens=max_tokens
+        )
         
         self.client = OpenAI(api_key=api_key)
         logger.info(f"Initialized planner with model: {model}")
@@ -77,7 +90,8 @@ class AgentlyPlanner:
             # Generate plan using LLM
             response = self._call_llm(
                 system_prompt=SystemPrompts.MAIN_SYSTEM.format(),
-                user_prompt=user_prompt
+                user_prompt=user_prompt,
+                conversation_type="initial_planning"
             )
             
             # Parse and validate response
@@ -139,7 +153,8 @@ class AgentlyPlanner:
             
             response = self._call_llm(
                 system_prompt=SystemPrompts.MAIN_SYSTEM.format(),
-                user_prompt=user_prompt
+                user_prompt=user_prompt,
+                conversation_type="error_recovery"
             )
             
             if not response or not response.strip():
@@ -186,7 +201,8 @@ class AgentlyPlanner:
             
             response = self._call_llm(
                 system_prompt=SystemPrompts.MAIN_SYSTEM.format(),
-                user_prompt=user_prompt
+                user_prompt=user_prompt,
+                conversation_type="element_selection"
             )
             
             if not response or not response.strip():
@@ -212,24 +228,63 @@ class AgentlyPlanner:
             logger.error(f"Failed to select element: {e}")
             return None
     
-    def _call_llm(self, system_prompt: str, user_prompt: str) -> str:
-        """Make a call to the LLM API."""
+    def _call_llm(self, system_prompt: str, user_prompt: str, conversation_type: str = "planning") -> str:
+        """Make a call to the LLM API with detailed logging."""
         try:
+            # Increment conversation counter
+            self.conversation_logger.increment_counter()
+            
+            # Prepare messages
+            messages = [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt}
+            ]
+            
+            # Log the conversation before making the API call
+            self.conversation_logger.log_conversation(
+                conversation_type=conversation_type,
+                messages=messages,
+                stage="request"
+            )
+            
+            # Make API call
             response = self.client.chat.completions.create(
                 model=self.model,
-                messages=[
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": user_prompt}
-                ],
+                messages=messages,
                 temperature=self.temperature,
                 max_tokens=self.max_tokens
             )
             
             content = response.choices[0].message.content
+            
+            # Log the response
+            self.conversation_logger.log_conversation(
+                conversation_type=conversation_type,
+                messages=messages,
+                response=content,
+                response_metadata={
+                    "model": response.model,
+                    "usage": {
+                        "prompt_tokens": response.usage.prompt_tokens,
+                        "completion_tokens": response.usage.completion_tokens,
+                        "total_tokens": response.usage.total_tokens
+                    } if response.usage else None,
+                    "finish_reason": response.choices[0].finish_reason
+                },
+                stage="response"
+            )
+            
             logger.debug(f"LLM response: {content}")
             return content
             
         except Exception as e:
+            # Log the error
+            self.conversation_logger.log_conversation(
+                conversation_type=conversation_type,
+                messages=messages if 'messages' in locals() else [],
+                error=str(e),
+                stage="error"
+            )
             logger.error(f"LLM API call failed: {e}")
             raise
     
@@ -305,3 +360,5 @@ class AgentlyPlanner:
             })
         
         return json.dumps(formatted, indent=2)
+    
+

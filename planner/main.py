@@ -39,6 +39,8 @@ def main():
     parser.add_argument('--failed-action', help='Failed action data (JSON)')
     parser.add_argument('--error-message', help='Error message from failed action')
     parser.add_argument('--completed-actions', help='Completed actions data (JSON)')
+    parser.add_argument('--log-dir', help='Directory to save LLM conversation logs')
+    parser.add_argument('--enable-llm-logging', action='store_true', help='Enable detailed LLM conversation logging (may slow down execution)')
     
     args = parser.parse_args()
     
@@ -54,7 +56,10 @@ def main():
         if not api_key:
             logger.warning("OPENAI_API_KEY not set, planner may fail")
         
-        planner = AgentlyPlanner(api_key=api_key)
+        planner = AgentlyPlanner(
+            api_key=api_key, 
+            log_dir=args.log_dir if args.enable_llm_logging else None
+        )
         
         # Create planning context
         context = PlanningContext(
