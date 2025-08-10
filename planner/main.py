@@ -36,9 +36,11 @@ def main():
     parser.add_argument('--graph', required=True, help='Path to UI graph JSON file')
     parser.add_argument('--verbose', '-v', action='store_true', help='Verbose logging')
     parser.add_argument('--recovery', action='store_true', help='Recovery planning mode')
-    parser.add_argument('--failed-action', help='Failed action data (JSON)')
+    parser.add_argument('--failed-action', help='Failed action data (JSON, deprecated)')
+    parser.add_argument('--failed-action-file', help='Path to JSON file containing the failed action')
     parser.add_argument('--error-message', help='Error message from failed action')
-    parser.add_argument('--completed-actions', help='Completed actions data (JSON)')
+    parser.add_argument('--completed-actions', help='Completed actions data (JSON, deprecated)')
+    parser.add_argument('--completed-actions-file', help='Path to JSON file containing completed actions')
     parser.add_argument('--log-dir', help='Directory to save LLM conversation logs')
     parser.add_argument('--enable-llm-logging', action='store_true', help='Enable detailed LLM conversation logging (may slow down execution)')
     
@@ -71,11 +73,22 @@ def main():
         if args.recovery:
             # Recovery planning mode
             error_context = {}
-            if args.failed_action:
+            
+            # Handle failed action (file takes precedence over direct argument)
+            if args.failed_action_file:
+                with open(args.failed_action_file, 'r') as f:
+                    error_context['failed_action'] = json.load(f)
+            elif args.failed_action:
                 error_context['failed_action'] = json.loads(args.failed_action)
+            
             if args.error_message:
                 error_context['error_message'] = args.error_message
-            if args.completed_actions:
+            
+            # Handle completed actions (file takes precedence over direct argument)
+            if args.completed_actions_file:
+                with open(args.completed_actions_file, 'r') as f:
+                    context.previous_actions = json.load(f)
+            elif args.completed_actions:
                 context.previous_actions = json.loads(args.completed_actions)
             
             context.error_context = error_context

@@ -321,9 +321,12 @@ struct AgentlyRunner: AsyncParsableCommand {
         let tempGraphFile = URL(fileURLWithPath: "/tmp/agently_recovery_graph.json")
         try graphData.write(to: tempGraphFile)
         
-        // Prepare action data as JSON strings
-        let failedActionData = try JSONSerialization.data(withJSONObject: failedAction)
-        let failedActionJSON = String(data: failedActionData, encoding: .utf8)?.replacingOccurrences(of: "'", with: "\\'") ?? ""
+        // Write action data to temporary files to avoid shell escaping issues
+        let tempFailedActionFile = URL(fileURLWithPath: "/tmp/agently_failed_action.json")
+        let tempCompletedActionsFile = URL(fileURLWithPath: "/tmp/agently_completed_actions.json")
+        
+        let failedActionData = try JSONSerialization.data(withJSONObject: failedAction, options: .prettyPrinted)
+        try failedActionData.write(to: tempFailedActionFile)
         
         let completedActionsData = try JSONSerialization.data(withJSONObject: completedActions.map { result in
             [
@@ -331,14 +334,19 @@ struct AgentlyRunner: AsyncParsableCommand {
                 "description": result.action.description,
                 "success": result.success
             ]
-        })
-        let completedActionsJSON = String(data: completedActionsData, encoding: .utf8)?.replacingOccurrences(of: "'", with: "\\'") ?? ""
+        }, options: .prettyPrinted)
+        try completedActionsData.write(to: tempCompletedActionsFile)
         
         // Call Python recovery planner
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/bin/bash")
         let llmLoggingFlag = enableLlmLogging ? " --enable-llm-logging --log-dir '\(runDir.path)'" : ""
-        process.arguments = ["-c", "cd \(FileManager.default.currentDirectoryPath) && source venv/bin/activate && python3 -m planner.main --task '\(task)' --graph '\(tempGraphFile.path)' --recovery --failed-action '\(failedActionJSON)' --error-message '\(error)' --completed-actions '\(completedActionsJSON)'\(llmLoggingFlag)"]
+        
+        // Properly escape arguments by using separate arguments instead of a single shell command
+        let escapedTask = task.replacingOccurrences(of: "'", with: "'\"'\"'")
+        let escapedError = error.replacingOccurrences(of: "'", with: "'\"'\"'")
+        
+        process.arguments = ["-c", "cd '\(FileManager.default.currentDirectoryPath)' && source venv/bin/activate && python3 -m planner.main --task '\(escapedTask)' --graph '\(tempGraphFile.path)' --recovery --failed-action-file '\(tempFailedActionFile.path)' --error-message '\(escapedError)' --completed-actions-file '\(tempCompletedActionsFile.path)'\(llmLoggingFlag)"]
         
         let outputPipe = Pipe()
         let errorPipe = Pipe()
