@@ -183,7 +183,45 @@ struct AgentlyRunner: AsyncParsableCommand {
                     // Continue with recovery actions if available
                     if let recoveryActions = recoveryPlan["actions"] as? [[String: Any]], !recoveryActions.isEmpty {
                         logger.info("Attempting recovery with \(recoveryActions.count) actions")
-                        // Execute recovery actions (simplified for now)
+                        
+                        // Execute recovery actions
+                        var recoverySuccessful = true
+                        for (recoveryIndex, recoveryActionData) in recoveryActions.enumerated() {
+                            logger.info("Executing recovery action \(recoveryIndex + 1)/\(recoveryActions.count)")
+                            
+                            do {
+                                let recoveryAction = parseActionWithElementResolution(from: recoveryActionData, in: currentGraph)
+                                let recoveryResult = skillExecutor.execute(recoveryAction, in: currentGraph)
+                                executedActions.append(recoveryResult)
+                                
+                                if !recoveryResult.success {
+                                    logger.error("Recovery action failed: \(recoveryResult.errorMessage ?? "unknown error")")
+                                    recoverySuccessful = false
+                                    break
+                                }
+                                
+                                // Update graph after successful recovery action
+                                if recoveryResult.success {
+                                    try await Task.sleep(for: .milliseconds(500))
+                                    currentGraph = try graphBuilder.buildGraph()
+                                    
+                                    // Save recovery progress
+                                    try runLogger.saveGraphToRunDirectory(currentGraph, filename: "recovery_step_\(recoveryIndex + 1)", runDir: runDir)
+                                }
+                            } catch {
+                                logger.error("Recovery action execution failed: \(error)")
+                                recoverySuccessful = false
+                                break
+                            }
+                        }
+                        
+                        // If recovery failed, stop execution
+                        if !recoverySuccessful {
+                            logger.error("Recovery failed, stopping execution")
+                            break
+                        }
+                        
+                        logger.info("Recovery completed successfully")
                     } else {
                         logger.error("No recovery plan available, stopping execution")
                         break
@@ -401,6 +439,96 @@ struct AgentlyRunner: AsyncParsableCommand {
             parameters: parameters,
             description: description
         )
+    }
+    
+    private func parseActionWithElementResolution(from data: [String: Any], in graph: UIGraph) -> SkillAction {
+        let type = ActionType(rawValue: data["type"] as? String ?? "") ?? .click
+        let rawTargetElementId = data["target_element_id"] as? String
+        
+        // Resolve element ID if it looks like a semantic reference
+        let targetElementId = resolveElementId(rawTargetElementId, in: graph)
+        
+        // Convert all parameter values to strings to handle mixed types from JSON
+        var parameters: [String: String] = [:]
+        if let rawParameters = data["parameters"] as? [String: Any] {
+            for (key, value) in rawParameters {
+                parameters[key] = String(describing: value)
+            }
+        }
+        
+        let description = data["description"] as? String ?? "Unknown action"
+        
+        return SkillAction(
+            type: type,
+            targetElementId: targetElementId,
+            parameters: parameters,
+            description: description
+        )
+    }
+    
+    private func resolveElementId(_ rawId: String?, in graph: UIGraph) -> String? {
+        guard let rawId = rawId else { return nil }
+        
+        // If it's already a proper element ID (starts with "elem_"), use it as is
+        if rawId.hasPrefix("elem_") {
+            return rawId
+        }
+        
+        // Try to parse semantic references like "AXButton label:'Save'" or "AXTextField title:'Username'"
+        if let colonIndex = rawId.firstIndex(of: ":"),
+           let startQuote = rawId[rawId.index(after: colonIndex)...].firstIndex(of: "'"),
+           let endQuote = rawId[rawId.index(after: startQuote)...].firstIndex(of: "'") {
+            
+            let roleAndProperty = String(rawId[..<colonIndex])
+            let searchText = String(rawId[rawId.index(after: startQuote)..<endQuote])
+            
+            // Extract role (everything before the first space)
+            let roleParts = roleAndProperty.split(separator: " ", maxSplits: 1)
+            guard let role = roleParts.first else { return rawId }
+            
+            // Extract property (label, title, value) if specified
+            let property = roleParts.count > 1 ? String(roleParts[1]) : "any"
+            
+            // Find elements with matching role
+            let roleElements = graph.elements(withRole: String(role))
+            for element in roleElements {
+                // Check the specified property or any property if not specified
+                let matches = property == "any" || 
+                    (property == "label" && element.label == searchText) ||
+                    (property == "title" && element.title == searchText) ||
+                    (property == "value" && element.value == searchText)
+                
+                if matches || (property == "any" && 
+                    (element.label == searchText || element.title == searchText || element.value == searchText)) {
+                    return element.id
+                }
+            }
+        }
+        
+        // Try legacy format "AXButton 'text'" for backward compatibility
+        else if let spaceIndex = rawId.firstIndex(of: " "),
+                let startQuote = rawId[rawId.index(after: spaceIndex)...].firstIndex(of: "'"),
+                let endQuote = rawId[rawId.index(after: startQuote)...].firstIndex(of: "'") {
+            
+            let role = String(rawId[..<spaceIndex])
+            let searchText = String(rawId[rawId.index(after: startQuote)..<endQuote])
+            
+            let roleElements = graph.elements(withRole: role)
+            for element in roleElements {
+                if element.label == searchText || element.title == searchText || element.value == searchText {
+                    return element.id
+                }
+            }
+        }
+        
+        // Fallback: try to find any element containing the text
+        let matchingElements = graph.elements(containing: rawId)
+        if let firstMatch = matchingElements.first {
+            return firstMatch.id
+        }
+        
+        // If all else fails, return the raw ID and let the execution layer handle the error
+        return rawId
     }
     
 

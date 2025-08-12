@@ -142,13 +142,15 @@ class AgentlyPlanner:
         
         try:
             current_ui_summary = self._summarize_ui_graph(context.ui_graph)
+            available_elements = self._extract_interactive_elements(context.ui_graph)
             
             user_prompt = TaskPrompts.ERROR_RECOVERY.format(
                 failed_action=context.error_context.get("failed_action", "unknown"),
                 error_message=context.error_context.get("error_message", "unknown error"),
                 current_ui_state=current_ui_summary,
                 original_task=context.task,
-                completed_actions=context.previous_actions
+                completed_actions=context.previous_actions,
+                available_elements=available_elements
             )
             
             response = self._call_llm(
@@ -360,5 +362,66 @@ class AgentlyPlanner:
             })
         
         return json.dumps(formatted, indent=2)
+    
+    def _extract_interactive_elements(self, ui_graph: Dict[str, Any]) -> str:
+        """Extract interactive elements for recovery planning (generic across all apps)."""
+        elements = ui_graph.get("elements", {})
+        
+        interactive_elements = []
+        interactive_roles = {"AXButton", "AXTextField", "AXMenuButton", "AXLink", "AXTab", "AXMenuItem"}
+        
+        for element_id, element in elements.items():
+            role = element.get("role", "")
+            if (role in interactive_roles and 
+                element.get("isEnabled", False)):
+                
+                label = element.get("label", "")
+                title = element.get("title", "")
+                value = element.get("value", "")
+                app_name = element.get("applicationName", "")
+                
+                # Create display text prioritizing most informative attribute
+                display_parts = []
+                if label:
+                    display_parts.append(f"label:'{label}'")
+                if title and title != label:
+                    display_parts.append(f"title:'{title}'")
+                if value and value not in [label, title]:
+                    display_parts.append(f"value:'{value}'")
+                
+                display_text = " ".join(display_parts) if display_parts else "unlabeled"
+                
+                interactive_elements.append({
+                    "id": element_id,
+                    "role": role,
+                    "app": app_name,
+                    "display_text": display_text,
+                    "label": label,
+                    "title": title,
+                    "value": value
+                })
+        
+        if not interactive_elements:
+            return "No interactive elements found"
+        
+        # Group by application and sort by role
+        elements_by_app = {}
+        for elem in interactive_elements:
+            app = elem["app"] or "Unknown"
+            if app not in elements_by_app:
+                elements_by_app[app] = []
+            elements_by_app[app].append(elem)
+        
+        # Format as readable list grouped by app
+        result_lines = []
+        for app_name, app_elements in elements_by_app.items():
+            if len(app_elements) > 0:
+                result_lines.append(f"\n{app_name}:")
+                # Sort by role then by display text
+                app_elements.sort(key=lambda x: (x["role"], x["display_text"]))
+                for elem in app_elements[:20]:  # Limit to 20 elements per app
+                    result_lines.append(f"  - {elem['role']} {elem['display_text']}: {elem['id']}")
+        
+        return "\n".join(result_lines)
     
 
