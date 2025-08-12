@@ -1,0 +1,182 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agently.ai/schemas/benchmark-task.json",
+  "title": "Benchmark Task Definition",
+  "description": "Schema for defining benchmark tasks for the Agently AI agent",
+  "type": "object",
+  "required": [
+    "task_id",
+    "name", 
+    "description",
+    "category",
+    "complexity",
+    "success_criteria",
+    "timeout_seconds",
+    "human_baseline"
+  ],
+  "properties": {
+    "task_id": {
+      "type": "string",
+      "pattern": "^[a-z0-9_]+$",
+      "description": "Unique identifier for the task"
+    },
+    "name": {
+      "type": "string",
+      "description": "Human-readable task name"
+    },
+    "description": {
+      "type": "string",
+      "description": "Detailed description of what the task accomplishes"
+    },
+    "category": {
+      "type": "string",
+      "enum": [
+        "app_management",
+        "file_operations", 
+        "text_editing",
+        "web_browsing",
+        "email_communication",
+        "ide_development",
+        "creative_media",
+        "system_preferences"
+      ],
+      "description": "Task category for organization and analysis"
+    },
+    "complexity": {
+      "type": "string",
+      "enum": ["low", "medium", "high", "very_high"],
+      "description": "Relative complexity level of the task"
+    },
+    "tags": {
+      "type": "array",
+      "items": {"type": "string"},
+      "description": "Tags for filtering and categorization"
+    },
+    "setup": {
+      "type": "object",
+      "properties": {
+        "required_apps": {
+          "type": "array",
+          "items": {"type": "string"},
+          "description": "Applications that must be available"
+        },
+        "preconditions": {
+          "type": "array", 
+          "items": {"type": "string"},
+          "description": "System conditions that must be met"
+        },
+        "cleanup": {
+          "type": "array",
+          "items": {"type": "string"},
+          "description": "Cleanup actions to perform after task"
+        },
+        "test_data": {
+          "type": "object",
+          "description": "Data needed for task execution"
+        }
+      }
+    },
+    "task_steps": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["description", "expected_actions"],
+        "properties": {
+          "description": {"type": "string"},
+          "expected_actions": {
+            "type": "array",
+            "items": {"type": "string"}
+          },
+          "success_indicators": {
+            "type": "array", 
+            "items": {"type": "string"}
+          }
+        }
+      },
+      "description": "Detailed breakdown of task execution steps"
+    },
+    "success_criteria": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["type", "weight", "description"],
+        "properties": {
+          "type": {"type": "string"},
+          "weight": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1
+          },
+          "description": {"type": "string"},
+          "expected_value": {"type": "string"},
+          "app_name": {"type": "string"},
+          "element_role": {"type": "string"}
+        }
+      },
+      "description": "Criteria for determining task success"
+    },
+    "failure_modes": {
+      "type": "array",
+      "items": {"type": "string"},
+      "description": "Common ways the task can fail"
+    },
+    "timeout_seconds": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Maximum time allowed for task completion"
+    },
+    "retry_policy": {
+      "type": "object",
+      "properties": {
+        "max_retries": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "retry_delay_seconds": {
+          "type": "integer", 
+          "minimum": 0
+        }
+      }
+    },
+    "human_baseline": {
+      "type": "object",
+      "required": ["median_time_seconds", "median_action_count", "success_rate"],
+      "properties": {
+        "median_time_seconds": {
+          "type": "number",
+          "minimum": 0
+        },
+        "median_action_count": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "success_rate": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "notes": {"type": "string"}
+      },
+      "description": "Human performance baseline for comparison"
+    },
+    "validation": {
+      "type": "object",
+      "properties": {
+        "post_execution_checks": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["type"],
+            "properties": {
+              "type": {"type": "string"},
+              "app_name": {"type": "string"},
+              "expected_value": {"type": "string"},
+              "path": {"type": "string"}
+            }
+          }
+        }
+      },
+      "description": "Automated validation checks"
+    }
+  }
+}

@@ -1,0 +1,99 @@
+{
+  "task_id": "messages_compose_basic",
+  "name": "Compose and Send Message",
+  "description": "Open Messages app and send a test message to a contact",
+  "category": "text_editing",
+  "complexity": "high",
+  "tags": ["messages", "text_input", "contact_selection"],
+  "setup": {
+    "required_apps": ["Messages"],
+    "preconditions": ["messages_app_configured", "test_contact_available"],
+    "cleanup": ["close_messages_if_open"],
+    "test_data": {
+      "recipient": "Test Contact",
+      "message_text": "This is a test message from Agently AI agent"
+    }
+  },
+  "task_steps": [
+    {
+      "description": "Open Messages application",
+      "expected_actions": ["open_app", "focus_app"],
+      "success_indicators": ["messages_window_visible"]
+    },
+    {
+      "description": "Start new conversation or find existing contact",
+      "expected_actions": ["click_new_message", "search_contact"],
+      "success_indicators": ["compose_window_open", "recipient_field_active"]
+    },
+    {
+      "description": "Select or enter recipient",
+      "expected_actions": ["type_recipient", "select_contact"],
+      "success_indicators": ["recipient_selected"]
+    },
+    {
+      "description": "Focus message input field",
+      "expected_actions": ["click_message_field", "focus_input"],
+      "success_indicators": ["message_field_focused"]
+    },
+    {
+      "description": "Type message content",
+      "expected_actions": ["type_text"],
+      "success_indicators": ["message_text_entered"]
+    },
+    {
+      "description": "Send message",
+      "expected_actions": ["click_send", "keypress_enter"],
+      "success_indicators": ["message_sent", "message_in_conversation"]
+    }
+  ],
+  "success_criteria": [
+    {
+      "type": "message_sent",
+      "weight": 0.6,
+      "description": "Message successfully sent and appears in conversation"
+    },
+    {
+      "type": "correct_recipient",
+      "expected_recipient": "Test Contact",
+      "weight": 0.2,
+      "description": "Message sent to correct recipient"
+    },
+    {
+      "type": "correct_content",
+      "expected_content": "This is a test message from Agently AI agent",
+      "weight": 0.2,
+      "description": "Message contains correct text content"
+    }
+  ],
+  "failure_modes": [
+    "app_not_configured",
+    "contact_not_found",
+    "message_field_not_found",
+    "send_button_not_responsive",
+    "network_connection_failed"
+  ],
+  "timeout_seconds": 120,
+  "retry_policy": {
+    "max_retries": 2,
+    "retry_delay_seconds": 10
+  },
+  "human_baseline": {
+    "median_time_seconds": 45.0,
+    "median_action_count": 12,
+    "success_rate": 0.90,
+    "notes": "Complex task involving contact selection and text input, can fail on contact disambiguation"
+  },
+  "validation": {
+    "post_execution_checks": [
+      {
+        "type": "conversation_exists",
+        "recipient": "Test Contact"
+      },
+      {
+        "type": "message_in_conversation",
+        "content": "This is a test message from Agently AI agent",
+        "direction": "outgoing"
+      }
+    ]
+  }
+}

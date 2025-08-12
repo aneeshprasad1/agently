@@ -10,29 +10,60 @@ public class SkillExecutor {
     private let logger = Logger(label: "SkillExecutor")
     private let graphBuilder = AccessibilityGraphBuilder()
     
+    // Benchmark metrics tracking
+    private var currentRetryCount = 0
+    private var currentContextSwitchCount = 0
+    private var uiGraphBuildStartTime: Date?
+    private var llmPlanningStartTime: Date?
+    
     public init() {}
     
     /// Execute a skill action
     public func execute(_ action: SkillAction, in graph: UIGraph) -> SkillResult {
         let startTime = Date()
         
+        // Reset metrics for this execution
+        currentRetryCount = 0
+        currentContextSwitchCount = 0
+        
         logger.info("Executing action: \(action.type.rawValue) - \(action.description)")
+        
+        // Collect memory usage before execution
+        let initialMemoryUsage = getCurrentMemoryUsageMB()
         
         do {
             try performAction(action, in: graph)
             let executionTime = Date().timeIntervalSince(startTime)
+            
+            // Calculate benchmark metrics
+            let elementAccuracy = calculateElementTargetingAccuracy(action, in: graph)
+            let uiGraphTime = uiGraphBuildStartTime.map { Date().timeIntervalSince($0) }
+            let llmTime = llmPlanningStartTime.map { Date().timeIntervalSince($0) }
+            let peakMemoryUsage = getCurrentMemoryUsageMB()
             
             logger.info("Action completed successfully in \(String(format: "%.3f", executionTime))s")
             
             return SkillResult(
                 success: true,
                 action: action,
-                executionTime: executionTime
+                executionTime: executionTime,
+                elementTargetingAccuracy: elementAccuracy,
+                uiGraphBuildTime: uiGraphTime,
+                llmPlanningTime: llmTime,
+                memoryUsageMB: max(peakMemoryUsage, initialMemoryUsage),
+                retryCount: currentRetryCount,
+                contextSwitchCount: currentContextSwitchCount
             )
             
         } catch {
             let executionTime = Date().timeIntervalSince(startTime)
             let errorMessage = error.localizedDescription
+            
+            // Collect metrics even for failed actions
+            let elementAccuracy = calculateElementTargetingAccuracy(action, in: graph)
+            let uiGraphTime = uiGraphBuildStartTime.map { Date().timeIntervalSince($0) }
+            let llmTime = llmPlanningStartTime.map { Date().timeIntervalSince($0) }
+            let peakMemoryUsage = getCurrentMemoryUsageMB()
             
             logger.error("Action failed: \(errorMessage)")
             
@@ -40,7 +71,13 @@ public class SkillExecutor {
                 success: false,
                 action: action,
                 errorMessage: errorMessage,
-                executionTime: executionTime
+                executionTime: executionTime,
+                elementTargetingAccuracy: elementAccuracy,
+                uiGraphBuildTime: uiGraphTime,
+                llmPlanningTime: llmTime,
+                memoryUsageMB: max(peakMemoryUsage, initialMemoryUsage),
+                retryCount: currentRetryCount,
+                contextSwitchCount: currentContextSwitchCount
             )
         }
     }
@@ -303,7 +340,7 @@ public class SkillExecutor {
         
         if let appleScript = NSAppleScript(source: script) {
             var errorDict: NSDictionary?
-            let result = appleScript.executeAndReturnError(&errorDict)
+            let _ = appleScript.executeAndReturnError(&errorDict)
             
             if errorDict == nil {
                 logger.info("Successfully activated application via AppleScript: \(appName)")
@@ -510,6 +547,77 @@ public class SkillExecutor {
         }
         
         return flags
+    }
+    
+    // MARK: - Benchmark Metrics Collection
+    
+    /// Calculate element targeting accuracy for actions that target UI elements
+    private func calculateElementTargetingAccuracy(_ action: SkillAction, in graph: UIGraph) -> Double? {
+        guard let elementId = action.targetElementId else {
+            return nil // Not applicable for actions without target elements
+        }
+        
+        // Check if the target element exists and is accessible
+        if let element = graph.element(withId: elementId) {
+            // Element found - check if it's in a valid state for the action
+            switch action.type {
+            case .click, .doubleClick, .rightClick:
+                // For click actions, verify element is enabled and has reasonable size
+                let hasValidSize = element.size.width > 0 && element.size.height > 0
+                return element.isEnabled && hasValidSize ? 1.0 : 0.8
+            case .type:
+                // For type actions, verify element can potentially receive text input
+                let isTextRole = ["AXTextField", "AXTextArea", "AXComboBox", "AXSearchField"].contains(element.role)
+                return isTextRole && element.isEnabled ? 1.0 : 0.5
+            case .focus:
+                // For focus actions, verify element is enabled
+                return element.isEnabled ? 1.0 : 0.7
+            default:
+                // For other actions, basic existence check
+                return 1.0
+            }
+        } else {
+            // Element not found
+            return 0.0
+        }
+    }
+    
+    /// Get current memory usage in MB
+    private func getCurrentMemoryUsageMB() -> Int {
+        var info = mach_task_basic_info()
+        var count = mach_msg_type_number_t(MemoryLayout<mach_task_basic_info>.size)/4
+        
+        let result = withUnsafeMutablePointer(to: &info) {
+            $0.withMemoryRebound(to: integer_t.self, capacity: 1) {
+                task_info(mach_task_self_, task_flavor_t(MACH_TASK_BASIC_INFO), $0, &count)
+            }
+        }
+        
+        if result == KERN_SUCCESS {
+            return Int(info.resident_size / (1024 * 1024)) // Convert to MB
+        } else {
+            return 0
+        }
+    }
+    
+    /// Mark the start of UI graph building (to be called from graph builder)
+    public func markUIGraphBuildStart() {
+        uiGraphBuildStartTime = Date()
+    }
+    
+    /// Mark the start of LLM planning (to be called from planner)
+    public func markLLMPlanningStart() {
+        llmPlanningStartTime = Date()
+    }
+    
+    /// Increment retry count (to be called when retrying actions)
+    public func incrementRetryCount() {
+        currentRetryCount += 1
+    }
+    
+    /// Increment context switch count (to be called when switching apps/windows)
+    public func incrementContextSwitchCount() {
+        currentContextSwitchCount += 1
     }
 }
 

@@ -1,0 +1,90 @@
+{
+  "task_id": "calculator_simple_computation",
+  "name": "Perform Simple Calculation",
+  "description": "Open Calculator and compute 2 * 100",
+  "category": "app_management",
+  "complexity": "medium",
+  "tags": ["calculator", "computation", "ui_interaction"],
+  "setup": {
+    "required_apps": [],
+    "preconditions": ["macos_system"],
+    "cleanup": ["close_calculator_if_open"],
+    "test_data": {
+      "operand1": "2",
+      "operator": "*",
+      "operand2": "100",
+      "expected_result": "200"
+    }
+  },
+  "task_steps": [
+    {
+      "description": "Open Calculator application",
+      "expected_actions": ["open_app", "focus_app"],
+      "success_indicators": ["calculator_window_visible"]
+    },
+    {
+      "description": "Enter first number (2)",
+      "expected_actions": ["click_button", "input_number"],
+      "success_indicators": ["display_shows_2"]
+    },
+    {
+      "description": "Click multiplication operator (*)",
+      "expected_actions": ["click_button"],
+      "success_indicators": ["operator_selected"]
+    },
+    {
+      "description": "Enter second number (100)",
+      "expected_actions": ["click_button", "input_number"],
+      "success_indicators": ["display_shows_100"]
+    },
+    {
+      "description": "Click equals to get result",
+      "expected_actions": ["click_button"],
+      "success_indicators": ["result_displayed"]
+    }
+  ],
+  "success_criteria": [
+    {
+      "type": "display_result",
+      "expected_value": "200",
+      "weight": 0.8,
+      "description": "Calculator displays correct result (200)"
+    },
+    {
+      "type": "computation_completed",
+      "weight": 0.2,
+      "description": "All computation steps completed successfully"
+    }
+  ],
+  "failure_modes": [
+    "app_not_found",
+    "incorrect_button_clicks",
+    "wrong_result_displayed",
+    "ui_elements_not_found"
+  ],
+  "timeout_seconds": 60,
+  "retry_policy": {
+    "max_retries": 1,
+    "retry_delay_seconds": 5
+  },
+  "human_baseline": {
+    "median_time_seconds": 15.0,
+    "median_action_count": 8,
+    "success_rate": 0.95,
+    "notes": "Requires precise UI interaction, can fail if buttons not clicked properly"
+  },
+  "validation": {
+    "post_execution_checks": [
+      {
+        "type": "calculator_display_value",
+        "expected_value": "200"
+      },
+      {
+        "type": "ui_element_exists",
+        "app_name": "Calculator",
+        "element_role": "AXStaticText",
+        "element_value": "200"
+      }
+    ]
+  }
+}

@@ -1,0 +1,94 @@
+{
+  "task_id": "safari_navigate_basic",
+  "name": "Navigate to Website in Safari",
+  "description": "Open Safari and navigate to a specific website",
+  "category": "web_browsing",
+  "complexity": "medium",
+  "tags": ["safari", "web_navigation", "url_entry"],
+  "setup": {
+    "required_apps": ["Safari"],
+    "preconditions": ["internet_connection", "safari_available"],
+    "cleanup": ["close_safari_if_open"],
+    "test_data": {
+      "target_url": "https://www.apple.com",
+      "expected_title": "Apple"
+    }
+  },
+  "task_steps": [
+    {
+      "description": "Open Safari application",
+      "expected_actions": ["open_app", "focus_app"],
+      "success_indicators": ["safari_window_visible"]
+    },
+    {
+      "description": "Focus address bar",
+      "expected_actions": ["click_address_bar", "focus_url_field"],
+      "success_indicators": ["address_bar_focused"]
+    },
+    {
+      "description": "Enter target URL",
+      "expected_actions": ["type_url", "clear_existing_url"],
+      "success_indicators": ["url_entered"]
+    },
+    {
+      "description": "Navigate to website",
+      "expected_actions": ["press_enter", "click_go"],
+      "success_indicators": ["page_loading"]
+    },
+    {
+      "description": "Wait for page to load",
+      "expected_actions": ["wait_for_load"],
+      "success_indicators": ["page_loaded", "content_visible"]
+    }
+  ],
+  "success_criteria": [
+    {
+      "type": "page_loaded",
+      "target_url": "https://www.apple.com",
+      "weight": 0.6,
+      "description": "Successfully navigated to target website"
+    },
+    {
+      "type": "correct_page_title",
+      "expected_title": "Apple",
+      "weight": 0.3,
+      "description": "Page title matches expected value"
+    },
+    {
+      "type": "page_content_loaded",
+      "weight": 0.1,
+      "description": "Page content is visible and functional"
+    }
+  ],
+  "failure_modes": [
+    "safari_not_available",
+    "no_internet_connection",
+    "address_bar_not_found",
+    "page_load_timeout",
+    "dns_resolution_failed"
+  ],
+  "timeout_seconds": 90,
+  "retry_policy": {
+    "max_retries": 2,
+    "retry_delay_seconds": 15
+  },
+  "human_baseline": {
+    "median_time_seconds": 25.0,
+    "median_action_count": 6,
+    "success_rate": 0.92,
+    "notes": "Depends on network connectivity and page load times"
+  },
+  "validation": {
+    "post_execution_checks": [
+      {
+        "type": "window_title_contains",
+        "app_name": "Safari",
+        "expected_text": "Apple"
+      },
+      {
+        "type": "url_bar_contains",
+        "expected_url": "apple.com"
+      }
+    ]
+  }
+}

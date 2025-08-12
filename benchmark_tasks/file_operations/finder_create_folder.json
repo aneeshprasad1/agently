@@ -1,0 +1,85 @@
+{
+  "task_id": "finder_create_folder_basic",
+  "name": "Create New Folder in Finder",
+  "description": "Open Finder and create a new folder on the Desktop",
+  "category": "file_operations",
+  "complexity": "medium",
+  "tags": ["finder", "file_management", "folder_creation"],
+  "setup": {
+    "required_apps": ["Finder"],
+    "preconditions": ["desktop_accessible"],
+    "cleanup": ["delete_test_folder"],
+    "test_data": {
+      "folder_name": "Agently Test Folder",
+      "location": "Desktop"
+    }
+  },
+  "task_steps": [
+    {
+      "description": "Open Finder application",
+      "expected_actions": ["open_app", "focus_app"],
+      "success_indicators": ["finder_window_visible"]
+    },
+    {
+      "description": "Navigate to Desktop",
+      "expected_actions": ["click_desktop_sidebar", "navigate_location"],
+      "success_indicators": ["desktop_location_active"]
+    },
+    {
+      "description": "Create new folder",
+      "expected_actions": ["right_click_empty_space", "select_new_folder"],
+      "success_indicators": ["new_folder_created", "folder_name_editable"]
+    },
+    {
+      "description": "Name the folder",
+      "expected_actions": ["type_folder_name", "confirm_name"],
+      "success_indicators": ["folder_named_correctly"]
+    }
+  ],
+  "success_criteria": [
+    {
+      "type": "folder_exists",
+      "folder_path": "~/Desktop/Agently Test Folder",
+      "weight": 0.8,
+      "description": "Folder created in correct location"
+    },
+    {
+      "type": "correct_folder_name",
+      "expected_name": "Agently Test Folder",
+      "weight": 0.2,
+      "description": "Folder has correct name"
+    }
+  ],
+  "failure_modes": [
+    "finder_not_responsive",
+    "desktop_not_accessible",
+    "context_menu_not_found",
+    "folder_creation_failed",
+    "naming_operation_failed"
+  ],
+  "timeout_seconds": 60,
+  "retry_policy": {
+    "max_retries": 2,
+    "retry_delay_seconds": 5
+  },
+  "human_baseline": {
+    "median_time_seconds": 20.0,
+    "median_action_count": 7,
+    "success_rate": 0.94,
+    "notes": "Usually reliable, can fail if right-click context menu doesn't appear"
+  },
+  "validation": {
+    "post_execution_checks": [
+      {
+        "type": "file_system_check",
+        "path": "~/Desktop/Agently Test Folder",
+        "expected_type": "directory"
+      },
+      {
+        "type": "finder_shows_folder",
+        "folder_name": "Agently Test Folder",
+        "location": "Desktop"
+      }
+    ]
+  }
+}

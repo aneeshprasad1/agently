@@ -37,23 +37,44 @@ public enum ActionType: String, Codable, CaseIterable {
 
 /// Result of executing a skill action
 public struct SkillResult: Codable {
+    // Core execution results
     public let success: Bool
     public let action: SkillAction
     public let errorMessage: String?
     public let executionTime: TimeInterval
     public let timestamp: Date
     
+    // Benchmark metrics
+    public let elementTargetingAccuracy: Double?  // 0.0-1.0, nil if not applicable
+    public let uiGraphBuildTime: TimeInterval?    // Time to build UI graph before action
+    public let llmPlanningTime: TimeInterval?     // Time spent in LLM planning
+    public let memoryUsageMB: Int?               // Peak memory usage during execution
+    public let retryCount: Int                   // Number of retries attempted
+    public let contextSwitchCount: Int           // Number of app/window switches
+    
     public init(
         success: Bool,
         action: SkillAction,
         errorMessage: String? = nil,
         executionTime: TimeInterval,
-        timestamp: Date = Date()
+        timestamp: Date = Date(),
+        elementTargetingAccuracy: Double? = nil,
+        uiGraphBuildTime: TimeInterval? = nil,
+        llmPlanningTime: TimeInterval? = nil,
+        memoryUsageMB: Int? = nil,
+        retryCount: Int = 0,
+        contextSwitchCount: Int = 0
     ) {
         self.success = success
         self.action = action
         self.errorMessage = errorMessage
         self.executionTime = executionTime
         self.timestamp = timestamp
+        self.elementTargetingAccuracy = elementTargetingAccuracy
+        self.uiGraphBuildTime = uiGraphBuildTime
+        self.llmPlanningTime = llmPlanningTime
+        self.memoryUsageMB = memoryUsageMB
+        self.retryCount = retryCount
+        self.contextSwitchCount = contextSwitchCount
     }
 }

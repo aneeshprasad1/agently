@@ -1,0 +1,63 @@
+{
+  "task_id": "open_calculator_basic",
+  "name": "Open Calculator Application",
+  "description": "Launch the built-in macOS Calculator application",
+  "category": "app_management",
+  "complexity": "low",
+  "tags": ["calculator", "app_launch", "basic"],
+  "setup": {
+    "required_apps": [],
+    "preconditions": ["macos_system"],
+    "cleanup": ["close_calculator_if_open"]
+  },
+  "task_steps": [
+    {
+      "description": "Open Calculator application",
+      "expected_actions": ["open_app", "focus_app"],
+      "success_indicators": ["calculator_window_visible", "calculator_app_active"]
+    }
+  ],
+  "success_criteria": [
+    {
+      "type": "application_running",
+      "app_name": "Calculator",
+      "weight": 0.7,
+      "description": "Calculator application is running"
+    },
+    {
+      "type": "window_visible",
+      "app_name": "Calculator", 
+      "weight": 0.3,
+      "description": "Calculator window is visible and accessible"
+    }
+  ],
+  "failure_modes": [
+    "app_not_found",
+    "permission_denied",
+    "app_crashed_on_launch"
+  ],
+  "timeout_seconds": 30,
+  "retry_policy": {
+    "max_retries": 2,
+    "retry_delay_seconds": 3
+  },
+  "human_baseline": {
+    "median_time_seconds": 3.5,
+    "median_action_count": 2,
+    "success_rate": 0.98,
+    "notes": "Very reliable task, failures usually due to system issues"
+  },
+  "validation": {
+    "post_execution_checks": [
+      {
+        "type": "app_process_exists",
+        "app_name": "Calculator"
+      },
+      {
+        "type": "ui_element_exists",
+        "app_name": "Calculator",
+        "element_role": "AXWindow"
+      }
+    ]
+  }
+}
