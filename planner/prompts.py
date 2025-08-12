@@ -49,12 +49,18 @@ UI Graph format:
 - Applications: each element belongs to an app
 
 Guidelines:
-1. Be precise with element targeting (use IDs)
-2. Validate element state before actions
-3. Use accessibility-friendly approaches
-4. Handle errors gracefully
-5. Minimize action count
-6. Prefer accessibility actions over raw events
+1. Be precise with element targeting (use exact element IDs when available)
+2. Use semantic element references when IDs are not known (e.g., "AXButton label:'Save'")
+3. Validate element state before actions
+4. Use accessibility-friendly approaches
+5. Handle errors gracefully
+6. Minimize action count
+7. Prefer accessibility actions over raw events
+
+Element Targeting:
+- PREFERRED: Exact element IDs from UI graph (format: "elem_1234567890")
+- ALTERNATIVE: Semantic references (format: "AXButton label:'text'" or "AXTextField title:'name'")
+- The system automatically resolves semantic references to actual element IDs
 
 Always respond with a JSON plan containing an array of actions.""",
         required_variables=[]
@@ -154,10 +160,22 @@ Error: {error_message}
 Current UI state:
 {current_ui_state}
 
+Available interactive elements:
+{available_elements}
+
 Original task: {original_task}
 Progress so far: {completed_actions}
 
 Generate a recovery plan to continue toward the original goal.
+
+ELEMENT TARGETING GUIDELINES:
+1. PREFERRED: Use exact element IDs from the available_elements list (format: "elem_1234567890")
+2. ALTERNATIVE: Use semantic references (format: "AXButton label:'Save'" or "AXTextField title:'Username'")
+3. Look for elements by their label, title, or value that match your intent
+4. If an exact match isn't available, find the closest semantic equivalent
+5. For complex inputs (like multi-digit numbers), break them into individual element interactions
+6. Consider alternative approaches if the direct path isn't available
+7. The system can resolve semantic references to actual element IDs automatically
 
 Response format (NO COMMENTS ALLOWED - pure JSON only):
 {{
@@ -174,6 +192,6 @@ Response format (NO COMMENTS ALLOWED - pure JSON only):
 }}""",
         required_variables=[
             "failed_action", "error_message", "current_ui_state", 
-            "original_task", "completed_actions"
+            "original_task", "completed_actions", "available_elements"
         ]
     )
