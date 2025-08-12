@@ -18,7 +18,7 @@ import logging
 # Add parent directory to path to import planner modules
 sys.path.append(str(Path(__file__).parent.parent))
 
-from .task_loader import BenchmarkTask, TaskLoader
+from benchmark_tasks.task_loader import BenchmarkTask, TaskLoader
 
 
 @dataclass
@@ -199,7 +199,7 @@ class TaskRunner:
     
     def _execute_with_planner(self, task: BenchmarkTask, timeout: int) -> TaskResult:
         """
-        Execute task using the existing planner system
+        Execute task using the real Swift AgentlyRunner system
         
         Args:
             task: BenchmarkTask to execute
@@ -208,38 +208,48 @@ class TaskRunner:
         Returns:
             TaskResult with execution details
         """
-        # Construct command to run the planner with the task description
-        planner_path = Path(__file__).parent.parent / "planner" / "main.py"
-        
-        if not planner_path.exists():
-            raise FileNotFoundError(f"Planner not found at {planner_path}")
-        
-        # Use the task description as the prompt for the planner
-        cmd = [
-            sys.executable,
-            str(planner_path),
-            "--task", task.description,
-            "--timeout", str(timeout)
-        ]
-        
-        # Add test data as environment variables if available
-        env = os.environ.copy()
-        if task.setup and task.setup.test_data:
-            for key, value in task.setup.test_data.items():
-                env[f"AGENTLY_TEST_{key.upper()}"] = str(value)
+        # Use the real Swift AgentlyRunner instead of fake planning-only execution
+        project_root = Path(__file__).parent.parent
         
         try:
-            # Execute the planner
+            # Build the Swift project first
+            build_cmd = ["swift", "build"]
+            build_process = subprocess.run(
+                build_cmd,
+                cwd=project_root,
+                capture_output=True,
+                text=True,
+                timeout=60  # Build timeout
+            )
+            
+            if build_process.returncode != 0:
+                raise subprocess.CalledProcessError(build_process.returncode, build_cmd, build_process.stderr)
+            
+            # Execute the task using the real Swift AgentlyRunner
+            cmd = [
+                "swift", "run", "agently-runner",
+                "--task", task.description,
+                "--format", "json"
+            ]
+            
+            # Add test data as environment variables if available
+            env = os.environ.copy()
+            if task.setup and task.setup.test_data:
+                for key, value in task.setup.test_data.items():
+                    env[f"AGENTLY_TEST_{key.upper()}"] = str(value)
+            
+            # Execute the real Swift AgentlyRunner
             process = subprocess.run(
                 cmd,
+                cwd=project_root,
                 capture_output=True,
                 text=True,
                 timeout=timeout,
                 env=env
             )
             
-            # Parse the output to extract metrics
-            return self._parse_planner_output(task, process)
+            # Parse the output to extract metrics from real execution
+            return self._parse_agently_runner_output(task, process)
             
         except subprocess.TimeoutExpired:
             return TaskResult(
@@ -261,7 +271,71 @@ class TaskRunner:
                 failed_actions=1,
                 error_message=f"Planner execution failed: {e}"
             )
+        except Exception as e:
+            return TaskResult(
+                task_id=task.task_id,
+                success=False,
+                execution_time_seconds=0,
+                total_actions=0,
+                successful_actions=0,
+                failed_actions=1,
+                error_message=f"Swift AgentlyRunner execution failed: {e}"
+            )
     
+    def _parse_agently_runner_output(self, task: BenchmarkTask, process: subprocess.CompletedProcess) -> TaskResult:
+        """
+        Parse Swift AgentlyRunner output and extract metrics from real execution
+        
+        Args:
+            task: The executed task
+            process: Completed subprocess result from Swift AgentlyRunner
+            
+        Returns:
+            TaskResult with parsed metrics from real execution
+        """
+        # Basic success determination
+        success = process.returncode == 0
+        
+        # Try to parse JSON output from AgentlyRunner
+        total_actions = 0
+        successful_actions = 0
+        failed_actions = 0
+        
+        try:
+            if success and process.stdout:
+                # Parse the JSON output from Swift AgentlyRunner
+                output_data = json.loads(process.stdout)
+                total_actions = output_data.get('total_actions', 0)
+                successful_actions = output_data.get('successful_actions', 0)
+                failed_actions = total_actions - successful_actions
+            else:
+                # If no JSON output or failure, mark as failed
+                failed_actions = 1 if not success else 0
+        except json.JSONDecodeError:
+            # If we can't parse JSON, fall back to basic success/failure
+            total_actions = 1
+            successful_actions = 1 if success else 0
+            failed_actions = 0 if success else 1
+        
+        # Initialize result with real execution data
+        result = TaskResult(
+            task_id=task.task_id,
+            success=success,
+            execution_time_seconds=0.0,  # Will be set by caller
+            total_actions=total_actions,
+            successful_actions=successful_actions,
+            failed_actions=failed_actions
+        )
+        
+        # Extract any error messages
+        if not success and process.stderr:
+            result.error_message = process.stderr.strip()
+        
+        # Evaluate success criteria against real execution
+        result.success_criteria_scores = self._evaluate_success_criteria(task, result)
+        
+        return result
+
     def _parse_planner_output(self, task: BenchmarkTask, process: subprocess.CompletedProcess) -> TaskResult:
         """
         Parse planner output and extract metrics

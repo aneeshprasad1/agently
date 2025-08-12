@@ -11,8 +11,8 @@ import sys
 from pathlib import Path
 from typing import List, Optional
 
-from .task_loader import TaskLoader, BenchmarkTask
-from .task_runner import TaskRunner, TaskResult
+from benchmark_tasks.task_loader import TaskLoader, BenchmarkTask
+from benchmark_tasks.task_runner import TaskRunner, TaskResult
 
 
 def list_tasks(loader: TaskLoader, category: Optional[str] = None, complexity: Optional[str] = None):

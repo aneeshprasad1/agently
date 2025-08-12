@@ -13,8 +13,8 @@ from typing import Dict, List, Optional, Any
 import openai
 from openai import OpenAI
 
-from .prompts import SystemPrompts, TaskPrompts
-from .conversation_logger import ConversationLogger
+from planner.prompts import SystemPrompts, TaskPrompts
+from planner.conversation_logger import ConversationLogger
 
 
 logger = logging.getLogger(__name__)

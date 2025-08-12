@@ -11,7 +11,7 @@ import os
 import sys
 from pathlib import Path
 
-from .planner import AgentlyPlanner, PlanningContext
+from planner.planner import AgentlyPlanner, PlanningContext
 
 
 def setup_logging(verbose: bool = False):
