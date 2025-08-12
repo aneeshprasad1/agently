@@ -8,7 +8,7 @@ This directory contains all architectural and design documentation for the Agent
 
 | Document | Purpose | Status | Last Updated |
 |----------|---------|--------|--------------|
-| [**DESIGN_DOC.md**](./DESIGN_DOC.md) | Main system architecture and design principles | Active | - |
+| [**SYSTEM_ARCHITECTURE.md**](./SYSTEM_ARCHITECTURE.md) | Main system architecture and design principles | Active | - |
 | [**ADAPTIVE_AGENT_DESIGN.md**](./ADAPTIVE_AGENT_DESIGN.md) | Adaptive agent behavior and learning mechanisms | Active | - |
 
 ### Performance & Optimization
@@ -23,17 +23,25 @@ This directory contains all architectural and design documentation for the Agent
 |----------|---------|--------|--------------|
 | [**BENCHMARKING_PLAN.md**](./BENCHMARKING_PLAN.md) | Benchmarking infrastructure and testing strategy | Active | - |
 
+### Development & Operations
+
+| Document | Purpose | Status | Last Updated |
+|----------|---------|--------|--------------|
+| [**LOGGING_GUIDE.md**](./LOGGING_GUIDE.md) | Logging standards, debugging, and observability | Active | - |
+
 ## 🎯 Quick Reference
 
 ### For Developers
-- **New to the project?** Start with [DESIGN_DOC.md](./DESIGN_DOC.md)
+- **New to the project?** Start with [SYSTEM_ARCHITECTURE.md](./SYSTEM_ARCHITECTURE.md)
 - **Working on performance?** See [PERFORMANCE_OPTIMIZATION_PLAN.md](./PERFORMANCE_OPTIMIZATION_PLAN.md)
 - **Setting up benchmarks?** Check [BENCHMARKING_PLAN.md](./BENCHMARKING_PLAN.md)
+- **Debugging issues?** Consult [LOGGING_GUIDE.md](./LOGGING_GUIDE.md)
 
 ### For Contributors
 - **Understanding AI behavior?** Read [ADAPTIVE_AGENT_DESIGN.md](./ADAPTIVE_AGENT_DESIGN.md)
 - **Adding new features?** Review relevant design docs for architectural guidance
 - **Performance issues?** Consult the optimization plan for known bottlenecks
+- **Development setup?** Follow logging standards in the logging guide
 
 ## 📊 System Overview
 
@@ -86,7 +94,6 @@ The Agently system consists of several key components:
 - [README.md](../../README.md) - Project overview and setup
 - [QUICK_START.md](../../QUICK_START.md) - Getting started guide
 - [CONTRIBUTING.md](../../CONTRIBUTING.md) - Contribution guidelines
-- [LOGGING_GUIDE.md](../../LOGGING_GUIDE.md) - Logging and debugging
 
 ### Implementation Docs
 - Swift Package documentation in `/Sources`

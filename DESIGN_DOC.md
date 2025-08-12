@@ -1,1 +1,0 @@
-docs/design/DESIGN_DOC.md
