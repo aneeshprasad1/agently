@@ -28,6 +28,9 @@ class VerificationResult:
     ui_graph_path: Optional[str] = None
     validation_prompt: Optional[str] = None
     llm_response: Optional[Dict[str, Any]] = None
+    should_retry: bool = False
+    retry_reason: str = ""
+    plan_update: Optional[Dict[str, Any]] = None
 
 
 class StepVerifier:
@@ -43,7 +46,9 @@ class StepVerifier:
         step_description: str, 
         action_type: str,
         action_description: str,
-        run_dir: str
+        run_dir: str,
+        user_task: str = "",
+        completed_actions: list = None
     ) -> VerificationResult:
         """
         Verify that a step was completed successfully.
@@ -53,6 +58,8 @@ class StepVerifier:
             action_type: Type of action performed (e.g., 'click', 'type', 'key_press')
             action_description: Description of the action that was performed
             run_dir: Directory to save verification artifacts
+            user_task: The original user task for state analysis
+            completed_actions: List of actions that have been completed
             
         Returns:
             VerificationResult with success status and details
@@ -72,16 +79,36 @@ class StepVerifier:
             validation_prompt, screenshot_path
         )
         
-        # Add paths to result
+        # 4. Always perform state analysis for plan updates, regardless of verification success/failure
+        plan_update = None
+        if user_task and completed_actions:
+            try:
+                plan_update = self.analyze_state_and_suggest_plan(
+                    user_task, step_description, completed_actions, screenshot_path, run_dir
+                )
+                self.logger.info("State analysis completed for plan update suggestions")
+            except Exception as e:
+                self.logger.error(f"State analysis failed: {e}")
+        
+        # Add paths and plan update to result
         verification_result.screenshot_path = screenshot_path
         verification_result.ui_graph_path = None  # Not used
         verification_result.validation_prompt = validation_prompt
+        verification_result.plan_update = plan_update
+        
+        # Determine if step should be retried
+        should_retry, retry_reason = self.should_retry_step(verification_result)
+        verification_result.should_retry = should_retry
+        verification_result.retry_reason = retry_reason
         
         return verification_result
     
     def _capture_screenshot(self, run_dir: str) -> str:
         """Capture a screenshot of the current screen and resize it for faster processing."""
         try:
+            # Ensure run_dir exists
+            os.makedirs(run_dir, exist_ok=True)
+            
             # Use macOS screencapture command
             timestamp = int(time.time())
             temp_screenshot_path = os.path.join(run_dir, f"temp_screenshot_{timestamp}.png")
@@ -285,7 +312,14 @@ Be strict but fair. If you're unsure, mark success as false and explain your unc
             return VerificationResult(
                 success=False,
                 confidence=0.0,
-                reasoning=f"Verification failed due to error: {e}"
+                reasoning=f"Verification failed due to error: {e}",
+                llm_response={
+                    "success": False,
+                    "confidence": 0.0,
+                    "reasoning": f"Verification failed due to error: {e}",
+                    "visual_evidence": "Error occurred during verification",
+                    "suggested_next_action": "Retry the verification process"
+                }
             )
     
     def should_retry_step(
@@ -302,9 +336,15 @@ Be strict but fair. If you're unsure, mark success as false and explain your unc
         if verification_result.success:
             return False, "Step verified successfully"
         
+        # Always retry if confidence is very low
         if verification_result.confidence < 0.3:
             return True, f"Low confidence ({verification_result.confidence}) - step likely failed"
         
+        # Retry if confidence is moderate but step failed (more aggressive)
+        if verification_result.confidence < 0.8:
+            return True, f"Moderate confidence ({verification_result.confidence}) - step may have failed"
+        
+        # Retry for specific error conditions
         if "error" in verification_result.reasoning.lower():
             return True, "Error detected in verification"
         
@@ -314,5 +354,177 @@ Be strict but fair. If you're unsure, mark success as false and explain your unc
         if "failed" in verification_result.reasoning.lower():
             return True, "Step explicitly marked as failed"
         
-        # Default: don't retry if confidence is reasonable but step didn't succeed
-        return False, "Step completed but verification inconclusive"
+        # Retry for incomplete tasks (key indicators)
+        if any(keyword in verification_result.reasoning.lower() for keyword in [
+            "incomplete", "not finished", "didn't complete", "unfinished", 
+            "not done", "still needs", "requires", "missing", "not sent",
+            "not typed", "not clicked", "not focused", "no clear indicator"
+        ]):
+            return True, "Task appears incomplete based on verification"
+        
+        # Retry if the LLM suggests a next action (indicates current step didn't work)
+        if verification_result.llm_response and "suggested_next_action" in verification_result.llm_response:
+            suggested_action = verification_result.llm_response.get("suggested_next_action", "")
+            if suggested_action and suggested_action.strip() and "try" in suggested_action.lower():
+                return True, "LLM suggests retry action"
+        
+        # Default: retry if step didn't succeed (more aggressive approach)
+        return True, "Step verification failed - retrying for completion"
+
+    def analyze_state_and_suggest_plan(
+        self,
+        user_task: str,
+        current_step: str,
+        completed_actions: list,
+        screenshot_path: str,
+        run_dir: str
+    ) -> Dict[str, Any]:
+        """
+        Analyze the current state and suggest plan updates based on what's observed.
+        
+        Args:
+            user_task: The original user task
+            current_step: Description of the current step being verified
+            completed_actions: List of actions that have been completed
+            screenshot_path: Path to the current screenshot
+            run_dir: Directory for saving artifacts
+            
+        Returns:
+            Dictionary with plan update suggestions
+        """
+        self.logger.info("Analyzing current state and suggesting plan updates")
+        
+        # Generate analysis prompt
+        analysis_prompt = self._generate_state_analysis_prompt(
+            user_task, current_step, completed_actions
+        )
+        
+        # Perform LLM analysis
+        analysis_result = self._perform_state_analysis(
+            analysis_prompt, screenshot_path
+        )
+        
+        return analysis_result
+
+    def _generate_state_analysis_prompt(
+        self,
+        user_task: str,
+        current_step: str,
+        completed_actions: list
+    ) -> str:
+        """Generate a prompt for analyzing the current state and suggesting plan updates."""
+        
+        completed_summary = "\n".join([f"- {action}" for action in completed_actions[-5:]])  # Last 5 actions
+        
+        prompt = f"""
+You are an AI assistant analyzing the current state of a macOS automation task and suggesting plan updates.
+
+USER TASK: {user_task}
+CURRENT STEP: {current_step}
+RECENTLY COMPLETED ACTIONS:
+{completed_summary}
+
+Based on the current screenshot, analyze:
+1. What has been accomplished so far
+2. What still needs to be done to complete the user's task
+3. Whether the current approach is working or if a different strategy is needed
+4. What the next immediate actions should be
+
+Consider:
+- Is the task partially complete? What's missing?
+- Are we on the right track or do we need to change approach?
+- What specific actions would complete the task from the current state?
+- Are there any obstacles or issues that need to be addressed?
+
+Respond with a JSON object in this exact format:
+{{
+    "current_progress": "Description of what has been accomplished",
+    "remaining_work": "What still needs to be done to complete the task",
+    "task_completed": true/false,
+    "completion_confidence": 0.0-1.0,
+    "approach_working": true/false,
+    "suggested_next_actions": [
+        {{
+            "action": "action_type",
+            "description": "Detailed description of what to do",
+            "priority": "high/medium/low"
+        }}
+    ],
+    "plan_update_needed": true,
+    "plan_update_reason": "Why the plan should be updated (if applicable)",
+    "obstacles": ["List of any obstacles or issues encountered"],
+    "confidence": 0.0-1.0
+}}
+
+Be specific and actionable in your suggestions.
+"""
+        return prompt
+
+    def _perform_state_analysis(
+        self,
+        analysis_prompt: str,
+        screenshot_path: str
+    ) -> Dict[str, Any]:
+        """Perform LLM analysis of current state and suggest plan updates."""
+        
+        try:
+            # Prepare messages for the LLM
+            messages = [
+                {
+                    "role": "system",
+                    "content": "You are an AI assistant that analyzes the current state of macOS automation tasks and suggests plan updates based on visual evidence."
+                },
+                {
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "text",
+                            "text": analysis_prompt
+                        }
+                    ]
+                }
+            ]
+            
+            # Add screenshot if available
+            if screenshot_path and os.path.exists(screenshot_path):
+                with open(screenshot_path, 'rb') as f:
+                    screenshot_data = f.read()
+                    screenshot_base64 = base64.b64encode(screenshot_data).decode('utf-8')
+                    
+                    messages[1]["content"].append({
+                        "type": "image_url",
+                        "image_url": {
+                            "url": f"data:image/png;base64,{screenshot_base64}"
+                        }
+                    })
+            
+            # Call OpenAI with structured output
+            response = self.client.chat.completions.create(
+                model="gpt-5-mini",
+                messages=messages,
+                response_format={"type": "json_object"},
+                max_completion_tokens=1500
+            )
+            
+            # Parse the JSON response
+            response_content = response.choices[0].message.content
+            analysis_result = json.loads(response_content)
+            
+            self.logger.info(f"State analysis completed with confidence: {analysis_result.get('confidence', 0.0)}")
+            
+            return analysis_result
+            
+        except Exception as e:
+            self.logger.error(f"Error during state analysis: {e}")
+            return {
+                "current_progress": "Analysis failed",
+                "remaining_work": "Unable to determine",
+                "task_completed": False,
+                "completion_confidence": 0.0,
+                "approach_working": False,
+                "suggested_next_actions": [],
+                "plan_update_needed": True,
+                "plan_update_reason": f"Analysis failed: {e}",
+                "obstacles": ["Analysis error"],
+                "confidence": 0.0
+            }

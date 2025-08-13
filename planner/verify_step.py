@@ -37,6 +37,9 @@ def main():
     parser.add_argument('--action-description', help='Description of the action performed')
     parser.add_argument('--action-description-file', help='Path to file containing action description')
     parser.add_argument('--run-dir', required=True, help='Directory to save verification artifacts')
+    parser.add_argument('--user-task', help='The original user task for state analysis')
+    parser.add_argument('--user-task-file', help='Path to file containing user task')
+    parser.add_argument('--completed-actions-file', help='Path to file containing completed actions (JSON array)')
     parser.add_argument('--verbose', '-v', action='store_true', help='Verbose logging')
     parser.add_argument('--log-dir', help='Directory to save LLM conversation logs')
     
@@ -88,6 +91,25 @@ def main():
     setup_logging(args.verbose)
     logger = logging.getLogger(__name__)
     
+    # Get user task and completed actions (optional)
+    user_task = ""
+    if args.user_task:
+        user_task = args.user_task
+    elif args.user_task_file:
+        try:
+            with open(args.user_task_file, 'r') as f:
+                user_task = f.read().strip()
+        except Exception as e:
+            logger.warning(f"Error reading user task file: {e}")
+    
+    completed_actions = []
+    if args.completed_actions_file:
+        try:
+            with open(args.completed_actions_file, 'r') as f:
+                completed_actions = json.load(f)
+        except Exception as e:
+            logger.warning(f"Error reading completed actions file: {e}")
+    
     try:
         # Get API key
         api_key = os.getenv('OPENAI_API_KEY')
@@ -106,11 +128,10 @@ def main():
             step_description=step_description,
             action_type=action_type,
             action_description=action_description,
-            run_dir=args.run_dir
+            run_dir=args.run_dir,
+            user_task=user_task,
+            completed_actions=completed_actions
         )
-        
-        # Determine if step should be retried
-        should_retry, retry_reason = verifier.should_retry_step(result)
         
         # Output result as JSON
         output = {
@@ -120,9 +141,10 @@ def main():
             "screenshot_path": result.screenshot_path,
             "ui_graph_path": result.ui_graph_path,
             "validation_prompt": result.validation_prompt,
-            "should_retry": should_retry,
-            "retry_reason": retry_reason,
-            "llm_response": result.llm_response
+            "should_retry": result.should_retry,
+            "retry_reason": result.retry_reason,
+            "llm_response": result.llm_response,
+            "plan_update": result.plan_update
         }
         
         # Output only the JSON to stdout, log everything else to stderr

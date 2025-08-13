@@ -13,6 +13,13 @@ func playFailureChime() {
     try? process.run()
 }
 
+func playCompletionChime() {
+    let process = Process()
+    process.executableURL = URL(fileURLWithPath: "/usr/bin/afplay")
+    process.arguments = ["/System/Library/Sounds/Glass.aiff"]
+    try? process.run()
+}
+
 // Verification result structure
 struct VerificationResult {
     let success: Bool
@@ -22,6 +29,7 @@ struct VerificationResult {
     let retryReason: String
     let screenshotPath: String?
     let uiGraphPath: String?
+    let planUpdate: [String: Any]? // Added for verifier insights
 }
 
 @main
@@ -287,9 +295,103 @@ struct AgentlyRunner: AsyncParsableCommand {
                         stepDescription: action.description,
                         actionType: action.type.rawValue,
                         actionDescription: action.description,
-                        runDir: runDir
+                        runDir: runDir,
+                        userTask: taskDescription,
+                        completedActions: executedActions.map { $0.action.description }
                     )
                     
+                    // Always process plan update suggestions from verifier, regardless of success/failure
+                    if let planUpdate = verificationResult.planUpdate {
+                        logger.info("📋 Plan update suggestions available from verifier")
+                        logger.info("Plan update: \(planUpdate)")
+                        
+                        // Log the suggested actions specifically
+                        if let suggestedActions = planUpdate["suggested_next_actions"] as? [[String: Any]] {
+                            logger.info("🎯 Found \(suggestedActions.count) suggested actions:")
+                            for (i, action) in suggestedActions.enumerated() {
+                                logger.info("  \(i+1). \(action)")
+                            }
+                        } else {
+                            logger.warning("❌ No suggested_next_actions found in plan update")
+                        }
+                        
+                        // Execute suggested actions if available
+                        if let suggestedActions = planUpdate["suggested_next_actions"] as? [[String: Any]], !suggestedActions.isEmpty {
+                            logger.info("🔄 Using verifier-suggested actions: \(suggestedActions.count) actions")
+                            
+                            // Execute suggested actions
+                            var recoverySuccessful = true
+                            for (recoveryIndex, suggestedActionData) in suggestedActions.enumerated() {
+                                logger.info("Executing suggested action \(recoveryIndex + 1)/\(suggestedActions.count)")
+                                
+                                do {
+                                    logger.info("Parsing suggested action: \(suggestedActionData)")
+                                    // Convert verifier action format to planner action format
+                                    var actionData = suggestedActionData
+                                    if let actionType = actionData["action"] as? String {
+                                        actionData["type"] = actionType
+                                        actionData.removeValue(forKey: "action")
+                                    }
+                                    
+                                    let suggestedAction = parseActionWithElementResolution(from: actionData, in: currentGraph)
+                                    logger.info("Executing suggested action: \(suggestedAction.description)")
+                                    let suggestedResult = skillExecutor.execute(suggestedAction, in: currentGraph)
+                                    executedActions.append(suggestedResult)
+                                    
+                                    if !suggestedResult.success {
+                                        logger.error("Suggested action failed: \(suggestedResult.errorMessage ?? "unknown error")")
+                                        recoverySuccessful = false
+                                        break
+                                    }
+                                    
+                                    // Update graph after successful suggested action
+                                    if suggestedResult.success {
+                                        try await Task.sleep(for: .milliseconds(500))
+                                        currentGraph = try graphBuilder.buildGraph()
+                                        
+                                        // Save suggested action progress
+                                        try runLogger.saveGraphToRunDirectory(currentGraph, filename: "suggested_step_\(recoveryIndex + 1)", runDir: runDir)
+                                    }
+                                } catch {
+                                    logger.error("Suggested action execution failed: \(error)")
+                                    recoverySuccessful = false
+                                    break
+                                }
+                            }
+                            
+                            if recoverySuccessful {
+                                logger.info("✅ Suggested actions completed successfully")
+                                consecutiveFailures = 0 // Reset failure count on successful recovery
+                            } else {
+                                logger.warning("Suggested actions failed")
+                            }
+                        }
+                        
+                        // Check if task is completed based on verifier analysis
+                        if let taskCompleted = planUpdate["task_completed"] as? Bool, taskCompleted {
+                            let completionConfidence = planUpdate["completion_confidence"] as? Double ?? 0.0
+                            logger.info("🎉 Task completed! Confidence: \(completionConfidence)")
+                            logger.info("Current progress: \(planUpdate["current_progress"] as? String ?? "Unknown")")
+                            
+                            // Play completion chime
+                            playCompletionChime()
+                            
+                            // Save execution summary and results
+                            try runLogger.saveExecutionResults(
+                                task: taskDescription,
+                                executedActions: executedActions,
+                                runDir: runDir
+                            )
+                            
+                            // Output results
+                            let successCount = executedActions.filter { $0.success }.count
+                            logger.info("✅ Task execution completed successfully: \(successCount)/\(executedActions.count) actions successful")
+                            
+                            return // Exit the function, ending task execution
+                        }
+                    }
+                    
+                    // Handle verification failure if step didn't succeed
                     if !verificationResult.success {
                         logger.warning("Step verification failed: \(verificationResult.reasoning)")
                         consecutiveFailures += 1
@@ -306,7 +408,7 @@ struct AgentlyRunner: AsyncParsableCommand {
                             // Play failure chime
                             playFailureChime()
                             
-                            // Try to recover with a new plan from current state
+                            // Fall back to planner recovery if no suggestions or suggestions failed
                             logger.info("🔄 Regenerating plan from current state after verification failure...")
                             let recoveryPlan = try await callPythonPlannerForRecovery(
                                 task: taskDescription,
@@ -699,7 +801,9 @@ struct AgentlyRunner: AsyncParsableCommand {
         stepDescription: String,
         actionType: String,
         actionDescription: String,
-        runDir: URL
+        runDir: URL,
+        userTask: String,
+        completedActions: [String]
     ) async throws -> VerificationResult {
         let logger = Logger(label: "StepVerification")
         logger.info("Verifying step: \(stepDescription)")
@@ -708,10 +812,17 @@ struct AgentlyRunner: AsyncParsableCommand {
         let tempStepDescFile = URL(fileURLWithPath: "/tmp/agently_step_desc.txt")
         let tempActionTypeFile = URL(fileURLWithPath: "/tmp/agently_action_type.txt")
         let tempActionDescFile = URL(fileURLWithPath: "/tmp/agently_action_desc.txt")
+        let tempUserTaskFile = URL(fileURLWithPath: "/tmp/agently_user_task.txt")
+        let tempCompletedActionsFile = URL(fileURLWithPath: "/tmp/agently_completed_actions.txt")
         
         try stepDescription.write(to: tempStepDescFile, atomically: true, encoding: .utf8)
         try actionType.write(to: tempActionTypeFile, atomically: true, encoding: .utf8)
         try actionDescription.write(to: tempActionDescFile, atomically: true, encoding: .utf8)
+        try userTask.write(to: tempUserTaskFile, atomically: true, encoding: .utf8)
+        
+        // Write completed actions as JSON array
+        let completedActionsData = try JSONSerialization.data(withJSONObject: completedActions)
+        try completedActionsData.write(to: tempCompletedActionsFile)
         
         logger.debug("Wrote verification arguments to temp files")
         
@@ -724,7 +835,7 @@ struct AgentlyRunner: AsyncParsableCommand {
         
         let arguments = [
             "-c",
-            "source venv/bin/activate && python \(verifyScript.path) --step-description-file '\(tempStepDescFile.path)' --action-type-file '\(tempActionTypeFile.path)' --action-description-file '\(tempActionDescFile.path)' --run-dir '\(runDir.path)'"
+            "source venv/bin/activate && python \(verifyScript.path) --step-description-file '\(tempStepDescFile.path)' --action-type-file '\(tempActionTypeFile.path)' --action-description-file '\(tempActionDescFile.path)' --user-task-file '\(tempUserTaskFile.path)' --completed-actions-file '\(tempCompletedActionsFile.path)' --run-dir '\(runDir.path)'"
         ]
         
         process.arguments = arguments
@@ -749,17 +860,19 @@ struct AgentlyRunner: AsyncParsableCommand {
             logger.debug("Verification stderr: \(errorOutput)")
         }
         
-        if process.terminationStatus != 0 {
-            logger.error("Verification failed: \(output)")
-            throw AgentlyError.executionFailed("Verification process failed")
-        }
-        
-        // Parse JSON response (output should be clean JSON now)
+        // Parse JSON response regardless of exit code (failed verification is expected)
         guard let jsonData = output.data(using: .utf8),
               let result = try JSONSerialization.jsonObject(with: jsonData) as? [String: Any] else {
             logger.error("Failed to parse JSON from output: \(output)")
             throw AgentlyError.executionFailed("Invalid JSON response from verifier")
         }
+        
+        // Log verification process status for debugging
+        if process.terminationStatus != 0 {
+            logger.debug("Verification script exited with code \(process.terminationStatus) (expected for failed verification)")
+        }
+        
+
         
         let success = result["success"] as? Bool ?? false
         let confidence = result["confidence"] as? Double ?? 0.0
@@ -768,6 +881,7 @@ struct AgentlyRunner: AsyncParsableCommand {
         let retryReason = result["retry_reason"] as? String ?? "Unknown reason"
         let screenshotPath = result["screenshot_path"] as? String
         let uiGraphPath = result["ui_graph_path"] as? String
+        let planUpdate = result["plan_update"] as? [String: Any]
         
         logger.info("Verification result: success=\(success), confidence=\(confidence)")
         
@@ -778,7 +892,8 @@ struct AgentlyRunner: AsyncParsableCommand {
             shouldRetry: shouldRetry,
             retryReason: retryReason,
             screenshotPath: screenshotPath,
-            uiGraphPath: uiGraphPath
+            uiGraphPath: uiGraphPath,
+            planUpdate: planUpdate
         )
     }
 }
