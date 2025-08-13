@@ -64,31 +64,45 @@ class StepVerifier:
         Returns:
             VerificationResult with success status and details
         """
+        start_time = time.time()
         self.logger.info(f"Verifying step: {step_description}")
         
         # 1. Capture screenshot
+        screenshot_start = time.time()
         screenshot_path = self._capture_screenshot(run_dir)
+        screenshot_duration = time.time() - screenshot_start
+        self.logger.info(f"📸 Screenshot captured in {screenshot_duration:.2f}s")
         
         # 2. Generate validation prompt
+        prompt_start = time.time()
         validation_prompt = self._generate_validation_prompt(
             step_description, action_type, action_description
         )
+        prompt_duration = time.time() - prompt_start
+        self.logger.info(f"📝 Validation prompt generated in {prompt_duration:.2f}s")
         
         # 3. Perform LLM validation with structured output
+        llm_start = time.time()
         verification_result = self._perform_llm_validation(
             validation_prompt, screenshot_path
         )
+        llm_duration = time.time() - llm_start
+        self.logger.info(f"🤖 LLM validation completed in {llm_duration:.2f}s")
         
-        # 4. Always perform state analysis for plan updates, regardless of verification success/failure
+        # 4. Perform state analysis for plan updates (only if verification failed or for complex tasks)
         plan_update = None
-        if user_task and completed_actions:
+        if user_task and completed_actions and (not verification_result.success or len(completed_actions) > 3):
             try:
+                analysis_start = time.time()
                 plan_update = self.analyze_state_and_suggest_plan(
                     user_task, step_description, completed_actions, screenshot_path, run_dir
                 )
-                self.logger.info("State analysis completed for plan update suggestions")
+                analysis_duration = time.time() - analysis_start
+                self.logger.info(f"🧠 State analysis completed in {analysis_duration:.2f}s")
             except Exception as e:
                 self.logger.error(f"State analysis failed: {e}")
+        else:
+            self.logger.info("⏭️ Skipping state analysis (verification successful and early in task)")
         
         # Add paths and plan update to result
         verification_result.screenshot_path = screenshot_path
@@ -100,6 +114,9 @@ class StepVerifier:
         should_retry, retry_reason = self.should_retry_step(verification_result)
         verification_result.should_retry = should_retry
         verification_result.retry_reason = retry_reason
+        
+        total_duration = time.time() - start_time
+        self.logger.info(f"⏱️ Total verification completed in {total_duration:.2f}s")
         
         return verification_result
     
@@ -137,7 +154,7 @@ class StepVerifier:
             self.logger.error(f"Error capturing screenshot: {e}")
             return ""
     
-    def _resize_screenshot(self, input_path: str, output_path: str, max_width: int = 1200, max_height: int = 900):
+    def _resize_screenshot(self, input_path: str, output_path: str, max_width: int = 800, max_height: int = 600):
         """Resize screenshot to reduce file size while maintaining aspect ratio."""
         try:
             from PIL import Image
@@ -216,7 +233,7 @@ class StepVerifier:
         """Generate a validation prompt for the step."""
         
         prompt = f"""
-You are a verification system for an AI agent that controls macOS applications. Your job is to verify whether a step was completed successfully.
+You are a verification system for macOS automation. Analyze the screenshot and determine if the step was completed successfully.
 
 STEP TO VERIFY: {step_description}
 ACTION PERFORMED: {action_type} - {action_description}
@@ -225,15 +242,14 @@ Based on the current screenshot, determine if the step was completed successfull
 
 Consider:
 1. What the step was supposed to accomplish
-2. What action was actually performed
-3. Whether the current screen state reflects successful completion
-4. Any visual indicators that the step worked (new windows, changed UI elements, etc.)
+2. Whether the current screen state reflects successful completion
+3. Any visual indicators that the step worked
 
 Respond with a JSON object in this exact format:
 {{
     "success": true/false,
     "confidence": 0.0-1.0,
-    "reasoning": "Detailed explanation of why the step succeeded or failed",
+    "reasoning": "Brief explanation of why the step succeeded or failed",
     "visual_evidence": "Description of what you see that supports your conclusion",
     "suggested_next_action": "If failed, what should be tried next"
 }}
@@ -290,6 +306,11 @@ Be strict but fair. If you're unsure, mark success as false and explain your unc
             
             # Parse the JSON response
             response_content = response.choices[0].message.content
+            self.logger.debug(f"Raw LLM response: '{response_content}'")
+            
+            if not response_content or response_content.strip() == "":
+                raise ValueError("Empty response from LLM")
+            
             llm_response = json.loads(response_content)
             
             # Extract verification result
@@ -508,6 +529,11 @@ Be specific and actionable in your suggestions.
             
             # Parse the JSON response
             response_content = response.choices[0].message.content
+            self.logger.debug(f"Raw LLM analysis response: '{response_content}'")
+            
+            if not response_content or response_content.strip() == "":
+                raise ValueError("Empty response from LLM")
+            
             analysis_result = json.loads(response_content)
             
             self.logger.info(f"State analysis completed with confidence: {analysis_result.get('confidence', 0.0)}")

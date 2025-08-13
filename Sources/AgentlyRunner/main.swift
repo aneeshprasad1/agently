@@ -291,6 +291,9 @@ struct AgentlyRunner: AsyncParsableCommand {
                     try runLogger.saveGraphToRunDirectory(currentGraph, filename: "\(String(format: "%02d", index + 1))_after_\(action.type.rawValue)", runDir: runDir)
                     
                     // Verify the step was completed successfully
+                    let verificationStartTime = Date()
+                    logger.info("🕐 Starting verification at \(verificationStartTime)")
+                    
                     let verificationResult = try await verifyStep(
                         stepDescription: action.description,
                         actionType: action.type.rawValue,
@@ -299,6 +302,10 @@ struct AgentlyRunner: AsyncParsableCommand {
                         userTask: taskDescription,
                         completedActions: executedActions.map { $0.action.description }
                     )
+                    
+                    let verificationEndTime = Date()
+                    let verificationDuration = verificationEndTime.timeIntervalSince(verificationStartTime)
+                    logger.info("🕐 Verification completed in \(String(format: "%.2f", verificationDuration))s")
                     
                     // Always process plan update suggestions from verifier, regardless of success/failure
                     if let planUpdate = verificationResult.planUpdate {
