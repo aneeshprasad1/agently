@@ -30,14 +30,60 @@ def setup_logging(verbose: bool = False):
 def main():
     """Main entry point for step verification."""
     parser = argparse.ArgumentParser(description='Agently Step Verifier')
-    parser.add_argument('--step-description', required=True, help='Description of what the step should accomplish')
-    parser.add_argument('--action-type', required=True, help='Type of action performed')
-    parser.add_argument('--action-description', required=True, help='Description of the action performed')
+    parser.add_argument('--step-description', help='Description of what the step should accomplish')
+    parser.add_argument('--step-description-file', help='Path to file containing step description')
+    parser.add_argument('--action-type', help='Type of action performed')
+    parser.add_argument('--action-type-file', help='Path to file containing action type')
+    parser.add_argument('--action-description', help='Description of the action performed')
+    parser.add_argument('--action-description-file', help='Path to file containing action description')
     parser.add_argument('--run-dir', required=True, help='Directory to save verification artifacts')
     parser.add_argument('--verbose', '-v', action='store_true', help='Verbose logging')
     parser.add_argument('--log-dir', help='Directory to save LLM conversation logs')
     
     args = parser.parse_args()
+    
+    # Get arguments from either direct parameters or files
+    step_description = None
+    if args.step_description:
+        step_description = args.step_description
+    elif args.step_description_file:
+        try:
+            with open(args.step_description_file, 'r') as f:
+                step_description = f.read().strip()
+        except Exception as e:
+            print(f"Error reading step description file: {e}")
+            sys.exit(1)
+    else:
+        print("Error: Either --step-description or --step-description-file must be provided")
+        sys.exit(1)
+    
+    action_type = None
+    if args.action_type:
+        action_type = args.action_type
+    elif args.action_type_file:
+        try:
+            with open(args.action_type_file, 'r') as f:
+                action_type = f.read().strip()
+        except Exception as e:
+            print(f"Error reading action type file: {e}")
+            sys.exit(1)
+    else:
+        print("Error: Either --action-type or --action-type-file must be provided")
+        sys.exit(1)
+    
+    action_description = None
+    if args.action_description:
+        action_description = args.action_description
+    elif args.action_description_file:
+        try:
+            with open(args.action_description_file, 'r') as f:
+                action_description = f.read().strip()
+        except Exception as e:
+            print(f"Error reading action description file: {e}")
+            sys.exit(1)
+    else:
+        print("Error: Either --action-description or --action-description-file must be provided")
+        sys.exit(1)
     
     setup_logging(args.verbose)
     logger = logging.getLogger(__name__)
@@ -57,9 +103,9 @@ def main():
         
         # Perform verification
         result = verifier.verify_step(
-            step_description=args.step_description,
-            action_type=args.action_type,
-            action_description=args.action_description,
+            step_description=step_description,
+            action_type=action_type,
+            action_description=action_description,
             run_dir=args.run_dir
         )
         

@@ -704,6 +704,17 @@ struct AgentlyRunner: AsyncParsableCommand {
         let logger = Logger(label: "StepVerification")
         logger.info("Verifying step: \(stepDescription)")
         
+        // Write arguments to temporary files to avoid shell escaping issues
+        let tempStepDescFile = URL(fileURLWithPath: "/tmp/agently_step_desc.txt")
+        let tempActionTypeFile = URL(fileURLWithPath: "/tmp/agently_action_type.txt")
+        let tempActionDescFile = URL(fileURLWithPath: "/tmp/agently_action_desc.txt")
+        
+        try stepDescription.write(to: tempStepDescFile, atomically: true, encoding: .utf8)
+        try actionType.write(to: tempActionTypeFile, atomically: true, encoding: .utf8)
+        try actionDescription.write(to: tempActionDescFile, atomically: true, encoding: .utf8)
+        
+        logger.debug("Wrote verification arguments to temp files")
+        
         // Call Python verification script
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/bin/bash")
@@ -713,7 +724,7 @@ struct AgentlyRunner: AsyncParsableCommand {
         
         let arguments = [
             "-c",
-            "source venv/bin/activate && python \(verifyScript.path) --step-description '\(stepDescription)' --action-type '\(actionType)' --action-description '\(actionDescription)' --run-dir '\(runDir.path)'"
+            "source venv/bin/activate && python \(verifyScript.path) --step-description-file '\(tempStepDescFile.path)' --action-type-file '\(tempActionTypeFile.path)' --action-description-file '\(tempActionDescFile.path)' --run-dir '\(runDir.path)'"
         ]
         
         process.arguments = arguments

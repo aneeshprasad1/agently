@@ -110,7 +110,7 @@ class StepVerifier:
             self.logger.error(f"Error capturing screenshot: {e}")
             return ""
     
-    def _resize_screenshot(self, input_path: str, output_path: str, max_width: int = 800, max_height: int = 600):
+    def _resize_screenshot(self, input_path: str, output_path: str, max_width: int = 1200, max_height: int = 900):
         """Resize screenshot to reduce file size while maintaining aspect ratio."""
         try:
             from PIL import Image
