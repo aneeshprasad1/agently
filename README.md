@@ -4,6 +4,8 @@
 
 ---
 
+
+
 ## Table of Contents
 
 1. [Why Accessibility?](#why-accessibility)
@@ -30,10 +32,10 @@
 
 | Metric                     | Target               |
 | -------------------------- | -------------------- |
-| OS‑World vX task pass rate | **≥ 95 %**           |
-| Avg. action count / task   | ≤ 1.1 × human median |
+| OS‑World vX task pass rate | **≥ 95 %**           |
+| Avg. action count / task   | ≤ 1.1 × human median |
 | Runtime / task             | ≤ human median       |
-| Resident memory            | < 500 MB             |
+| Resident memory            | < 500 MB             |
 
 ## Repo Structure
 
@@ -49,14 +51,37 @@ agently/
 └── README.md
 ```
 
-## Quick Start
+## Quick Start
+
+### One-Line Installation
+
+```bash
+# Install Agently globally (macOS 14+, Xcode 15+, Homebrew required)
+curl -fsSL https://raw.githubusercontent.com/your-org/agently/main/install.sh | bash
+```
+
+After installation, you can use Agently with simple commands:
+
+```bash
+# Open applications
+agently "Open Safari"
+agently "Open Messages"
+
+# Send messages
+agently "Open Messages and send a text to Aneesh that says 'hello!'"
+
+# Complex tasks
+agently "Open Safari and search for Sydney Sweeney's newest ad and play it on youtube"
+```
+
+### Manual Installation
 
 ```bash
 # 1. Clone
 $ git clone https://github.com/your‑org/agently.git && cd agently
 
-# 2. Install deps (macOS 14+, Xcode 15+, Homebrew)
-$ brew bundle   # installs Python 3.12, pyenv, swift‑format, etc.
+# 2. Install deps (macOS 14+, Xcode 15+, Homebrew)
+$ brew bundle   # installs Python 3.12, pyenv, swift‑format, etc.
 $ pip install -r requirements.txt  # PyPI deps (pyobjc, openai, pydantic)
 $ swift package resolve            # SwiftPM deps
 

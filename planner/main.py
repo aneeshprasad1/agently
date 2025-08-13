@@ -32,7 +32,8 @@ def load_ui_graph(graph_path: str) -> dict:
 def main():
     """Main entry point."""
     parser = argparse.ArgumentParser(description='Agently Planner')
-    parser.add_argument('--task', required=True, help='Task description')
+    parser.add_argument('--task', help='Task description')
+    parser.add_argument('--task-file', help='Path to file containing task description')
     parser.add_argument('--graph', required=True, help='Path to UI graph JSON file')
     parser.add_argument('--verbose', '-v', action='store_true', help='Verbose logging')
     parser.add_argument('--recovery', action='store_true', help='Recovery planning mode')
@@ -45,6 +46,21 @@ def main():
     parser.add_argument('--enable-llm-logging', action='store_true', help='Enable detailed LLM conversation logging (may slow down execution)')
     
     args = parser.parse_args()
+    
+    # Get task description from either --task or --task-file
+    task_description = None
+    if args.task:
+        task_description = args.task
+    elif args.task_file:
+        try:
+            with open(args.task_file, 'r') as f:
+                task_description = f.read().strip()
+        except Exception as e:
+            print(f"Error reading task file: {e}")
+            sys.exit(1)
+    else:
+        print("Error: Either --task or --task-file must be provided")
+        sys.exit(1)
     
     setup_logging(args.verbose)
     logger = logging.getLogger(__name__)
@@ -65,7 +81,7 @@ def main():
         
         # Create planning context
         context = PlanningContext(
-            task=args.task,
+            task=task_description,
             ui_graph=ui_graph,
             active_application=ui_graph.get('activeApplication')
         )

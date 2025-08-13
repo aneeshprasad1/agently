@@ -14,6 +14,10 @@ public class AccessibilityGraphBuilder {
     private let timeoutSeconds: Double
     private let skipLargeContainers: Bool
     
+    // Performance optimizations
+    private var attributeCache: [AXUIElement: [String: Any]] = [:]
+    private let cacheQueue = DispatchQueue(label: "accessibility.cache", qos: .userInitiated)
+    
     public init(maxDepth: Int = 10, maxElements: Int = 5000, timeoutSeconds: Double = 15.0, skipLargeContainers: Bool = true) {
         self.maxDepth = maxDepth
         self.maxElements = maxElements
@@ -26,6 +30,12 @@ public class AccessibilityGraphBuilder {
         logger.info("Building accessibility graph (max elements: \(maxElements), max depth: \(maxDepth), timeout: \(timeoutSeconds)s)")
         
         let startTime = Date()
+        
+        // Clear cache before building
+        cacheQueue.sync {
+            attributeCache.removeAll()
+        }
+        
         var elements: [String: UIElement] = [:]
         var rootElements: [String] = []
         
@@ -135,20 +145,21 @@ public class AccessibilityGraphBuilder {
         
         var elements: [String: UIElement] = [:]
         
-        // Get basic properties first
-        let role = getStringAttribute(axElement, kAXRoleAttribute) ?? "Unknown"
-        let title = getStringAttribute(axElement, kAXTitleAttribute)
-        let label = getStringAttribute(axElement, kAXDescriptionAttribute)
-        let value = getStringAttribute(axElement, kAXValueAttribute)
+        // Batch fetch all attributes for this element
+        let attributes = getElementAttributes(axElement)
+        let role = attributes["role"] as? String ?? "Unknown"
+        let title = attributes["title"] as? String
+        let label = attributes["label"] as? String
+        let value = attributes["value"] as? String
+        let position = attributes["position"] as? CGPoint ?? CGPoint.zero
+        let size = attributes["size"] as? CGSize ?? CGSize.zero
+        let isEnabled = attributes["enabled"] as? Bool ?? false
+        let isFocused = attributes["focused"] as? Bool ?? false
         
         // Skip certain element types that are not useful for automation
         if shouldSkipElement(role: role, applicationName: applicationName, depth: depth) {
             return [:]
         }
-        
-        // Get position and size
-        let position = getPositionAttribute(axElement) ?? CGPoint.zero
-        let size = getSizeAttribute(axElement) ?? CGSize.zero
         
         // Generate stable ID based on properties
         let elementId = generateStableElementId(
@@ -161,16 +172,12 @@ public class AccessibilityGraphBuilder {
             parent: parent
         )
         
-        // Get state
-        let isEnabled = getBoolAttribute(axElement, kAXEnabledAttribute) ?? false
-        let isFocused = getBoolAttribute(axElement, kAXFocusedAttribute) ?? false
-        
-        // Get children
+        // Get children (optimized)
         var childIds: [String] = []
         var childrenRef: CFTypeRef?
         let childrenResult = AXUIElementCopyAttributeValue(axElement, kAXChildrenAttribute as CFString, &childrenRef)
         
-        var remainingForChildren = remainingElements - 1 // Reserve 1 for current element
+        let remainingForChildren = remainingElements - 1 // Reserve 1 for current element
         
         if childrenResult == .success, let childrenArray = childrenRef as? [AXUIElement] {
             // For large containers, limit the number of children processed
@@ -191,8 +198,6 @@ public class AccessibilityGraphBuilder {
                     for (id, element) in childElements {
                         elements[id] = element
                     }
-                    
-                    remainingForChildren -= childElements.count
                     
                     // Find the direct child ID (the one with parent == elementId)
                     if let childElement = childElements.values.first(where: { $0.parent == elementId }) {
@@ -227,6 +232,33 @@ public class AccessibilityGraphBuilder {
     
     // MARK: - Helper Methods
     
+    /// Batch fetch all attributes for an element to reduce AX API calls
+    private func getElementAttributes(_ element: AXUIElement) -> [String: Any] {
+        // Check cache first
+        if let cached = attributeCache[element] {
+            return cached
+        }
+        
+        var attributes: [String: Any] = [:]
+        
+        // Fetch all attributes sequentially (simpler and more reliable)
+        attributes["role"] = getStringAttribute(element, kAXRoleAttribute) ?? "Unknown"
+        attributes["title"] = getStringAttribute(element, kAXTitleAttribute)
+        attributes["label"] = getStringAttribute(element, kAXDescriptionAttribute)
+        attributes["value"] = getStringAttribute(element, kAXValueAttribute)
+        attributes["position"] = getPositionAttribute(element) ?? CGPoint.zero
+        attributes["size"] = getSizeAttribute(element) ?? CGSize.zero
+        attributes["enabled"] = getBoolAttribute(element, kAXEnabledAttribute) ?? false
+        attributes["focused"] = getBoolAttribute(element, kAXFocusedAttribute) ?? false
+        
+        // Cache the result
+        cacheQueue.sync {
+            attributeCache[element] = attributes
+        }
+        
+        return attributes
+    }
+    
     private func generateElementId() -> String {
         elementIdCounter += 1
         return "element_\(elementIdCounter)"
@@ -258,7 +290,7 @@ public class AccessibilityGraphBuilder {
         return largContainerRoles.contains(role) && childCount > 100
     }
     
-    /// Generate a stable ID based on element properties
+    /// Generate a stable ID based on element properties (optimized)
     private func generateStableElementId(
         role: String,
         position: CGPoint,
@@ -268,21 +300,23 @@ public class AccessibilityGraphBuilder {
         applicationName: String,
         parent: String?
     ) -> String {
-        // Create a stable identifier based on element properties
-        let components = [
-            applicationName,
-            role,
-            String(format: "%.0f,%.0f", position.x, position.y),
-            String(format: "%.0fx%.0f", size.width, size.height),
-            label ?? "",
-            title ?? "",
-            parent ?? ""
-        ]
+        // Use a faster hash calculation with fewer string operations
+        let x = Int(position.x)
+        let y = Int(position.y)
+        let w = Int(size.width)
+        let h = Int(size.height)
         
-        let combined = components.joined(separator: "|")
-        let hash = combined.hashValue
+        // Create a simple hash from key properties
+        var hash = role.hashValue
+        hash = hash &* 31 &+ x
+        hash = hash &* 31 &+ y
+        hash = hash &* 31 &+ w
+        hash = hash &* 31 &+ h
+        hash = hash &* 31 &+ (label?.hashValue ?? 0)
+        hash = hash &* 31 &+ (title?.hashValue ?? 0)
+        hash = hash &* 31 &+ (parent?.hashValue ?? 0)
         
-        // Use absolute value to avoid negative hashes, and make it readable
+        // Use absolute value and make it readable
         return "elem_\(abs(hash))"
     }
     
