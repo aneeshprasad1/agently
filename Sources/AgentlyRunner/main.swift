@@ -5,6 +5,25 @@ import Logging
 import UIGraph
 import Skills
 
+// Audio feedback functions
+func playFailureChime() {
+    let process = Process()
+    process.executableURL = URL(fileURLWithPath: "/usr/bin/afplay")
+    process.arguments = ["/System/Library/Sounds/Basso.aiff"]
+    try? process.run()
+}
+
+// Verification result structure
+struct VerificationResult {
+    let success: Bool
+    let confidence: Double
+    let reasoning: String
+    let shouldRetry: Bool
+    let retryReason: String
+    let screenshotPath: String?
+    let uiGraphPath: String?
+}
+
 @main
 struct AgentlyRunner: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
@@ -149,10 +168,12 @@ struct AgentlyRunner: AsyncParsableCommand {
         
         logger.info("Generated plan with \(actions.count) actions")
         
-        // 3. Execute actions
+        // 3. Execute actions with retry mechanism
         let skillExecutor = SkillExecutor()
         var currentGraph = initialGraph
         var executedActions: [SkillResult] = []
+        var consecutiveFailures = 0
+        let maxConsecutiveFailures = 3
         
         for (index, actionData) in actions.enumerated() {
             logger.info("Executing action \(index + 1)/\(actions.count)")
@@ -164,8 +185,19 @@ struct AgentlyRunner: AsyncParsableCommand {
                 
                 if !result.success {
                     logger.error("Action failed: \(result.errorMessage ?? "unknown error")")
+                    consecutiveFailures += 1
                     
-                    // Try to recover
+                    if consecutiveFailures >= maxConsecutiveFailures {
+                        logger.error("❌ Task execution failed after \(maxConsecutiveFailures) consecutive failures")
+                        playFailureChime()
+                        throw AgentlyError.executionFailed("Task failed after \(maxConsecutiveFailures) consecutive failures")
+                    }
+                    
+                    // Play failure chime
+                    playFailureChime()
+                    
+                    // Try to recover with plan regeneration
+                    logger.info("🔄 Regenerating plan from current state...")
                     currentGraph = try graphBuilder.buildGraph()
                     
                     // Save recovery graph for inspection
@@ -215,16 +247,29 @@ struct AgentlyRunner: AsyncParsableCommand {
                             }
                         }
                         
-                        // If recovery failed, stop execution
+                        // If recovery failed, increment failure count
                         if !recoverySuccessful {
-                            logger.error("Recovery failed, stopping execution")
-                            break
+                            consecutiveFailures += 1
+                            if consecutiveFailures >= maxConsecutiveFailures {
+                                logger.error("❌ Task execution failed after \(maxConsecutiveFailures) consecutive failures")
+                                playFailureChime()
+                                throw AgentlyError.executionFailed("Task failed after \(maxConsecutiveFailures) consecutive failures")
+                            }
+                            logger.error("Recovery failed, will retry with new plan")
+                            continue // Retry the same action with a new plan
                         }
                         
                         logger.info("Recovery completed successfully")
+                        consecutiveFailures = 0 // Reset failure count on successful recovery
                     } else {
-                        logger.error("No recovery plan available, stopping execution")
-                        break
+                        logger.error("No recovery plan available, will retry with new plan")
+                        consecutiveFailures += 1
+                        if consecutiveFailures >= maxConsecutiveFailures {
+                            logger.error("❌ Task execution failed after \(maxConsecutiveFailures) consecutive failures")
+                            playFailureChime()
+                            throw AgentlyError.executionFailed("Task failed after \(maxConsecutiveFailures) consecutive failures")
+                        }
+                        continue // Retry the same action with a new plan
                     }
                 }
                 
@@ -236,10 +281,107 @@ struct AgentlyRunner: AsyncParsableCommand {
                     
                     // Save graph after each action for inspection
                     try runLogger.saveGraphToRunDirectory(currentGraph, filename: "\(String(format: "%02d", index + 1))_after_\(action.type.rawValue)", runDir: runDir)
+                    
+                    // Verify the step was completed successfully
+                    let verificationResult = try await verifyStep(
+                        stepDescription: action.description,
+                        actionType: action.type.rawValue,
+                        actionDescription: action.description,
+                        runDir: runDir
+                    )
+                    
+                    if !verificationResult.success {
+                        logger.warning("Step verification failed: \(verificationResult.reasoning)")
+                        consecutiveFailures += 1
+                        
+                        if consecutiveFailures >= maxConsecutiveFailures {
+                            logger.error("❌ Task execution failed after \(maxConsecutiveFailures) consecutive verification failures")
+                            playFailureChime()
+                            throw AgentlyError.executionFailed("Task failed after \(maxConsecutiveFailures) consecutive verification failures")
+                        }
+                        
+                        if verificationResult.shouldRetry {
+                            logger.info("Step should be retried: \(verificationResult.retryReason)")
+                            
+                            // Play failure chime
+                            playFailureChime()
+                            
+                            // Try to recover with a new plan from current state
+                            logger.info("🔄 Regenerating plan from current state after verification failure...")
+                            let recoveryPlan = try await callPythonPlannerForRecovery(
+                                task: taskDescription,
+                                graph: currentGraph,
+                                failedAction: actionData,
+                                error: "Step verification failed: \(verificationResult.reasoning)",
+                                completedActions: executedActions,
+                                runDir: runDir
+                            )
+                            
+                            // Continue with recovery actions if available
+                            if let recoveryActions = recoveryPlan["actions"] as? [[String: Any]], !recoveryActions.isEmpty {
+                                logger.info("Attempting recovery with \(recoveryActions.count) actions")
+                                
+                                // Execute recovery actions
+                                var recoverySuccessful = true
+                                for (recoveryIndex, recoveryActionData) in recoveryActions.enumerated() {
+                                    logger.info("Executing recovery action \(recoveryIndex + 1)/\(recoveryActions.count)")
+                                    
+                                    do {
+                                        let recoveryAction = parseActionWithElementResolution(from: recoveryActionData, in: currentGraph)
+                                        let recoveryResult = skillExecutor.execute(recoveryAction, in: currentGraph)
+                                        executedActions.append(recoveryResult)
+                                        
+                                        if !recoveryResult.success {
+                                            logger.error("Recovery action failed: \(recoveryResult.errorMessage ?? "unknown error")")
+                                            recoverySuccessful = false
+                                            break
+                                        }
+                                        
+                                        // Update graph after successful recovery action
+                                        if recoveryResult.success {
+                                            try await Task.sleep(for: .milliseconds(500))
+                                            currentGraph = try graphBuilder.buildGraph()
+                                            
+                                            // Save recovery progress
+                                            try runLogger.saveGraphToRunDirectory(currentGraph, filename: "recovery_step_\(recoveryIndex + 1)", runDir: runDir)
+                                        }
+                                    } catch {
+                                        logger.error("Recovery action execution failed: \(error)")
+                                        recoverySuccessful = false
+                                        break
+                                    }
+                                }
+                                
+                                // If recovery failed, continue to next iteration (will retry)
+                                if !recoverySuccessful {
+                                    logger.error("Recovery failed, will retry with new plan")
+                                    continue // Retry the same action with a new plan
+                                }
+                                
+                                logger.info("Recovery completed successfully")
+                                consecutiveFailures = 0 // Reset failure count on successful recovery
+                            } else {
+                                logger.error("No recovery plan available, will retry with new plan")
+                                continue // Retry the same action with a new plan
+                            }
+                        } else {
+                            logger.warning("Step verification inconclusive, continuing: \(verificationResult.retryReason)")
+                            consecutiveFailures = 0 // Reset failure count for inconclusive results
+                        }
+                    } else {
+                        logger.info("Step verified successfully with confidence: \(verificationResult.confidence)")
+                        consecutiveFailures = 0 // Reset failure count on successful verification
+                    }
                 }
                 
             } catch {
                 logger.error("Failed to execute action: \(error)")
+                consecutiveFailures += 1
+                if consecutiveFailures >= maxConsecutiveFailures {
+                    logger.error("❌ Task execution failed after \(maxConsecutiveFailures) consecutive failures")
+                    playFailureChime()
+                    throw AgentlyError.executionFailed("Task failed after \(maxConsecutiveFailures) consecutive failures")
+                }
                 break
             }
         }
@@ -286,20 +428,44 @@ struct AgentlyRunner: AsyncParsableCommand {
 
     
     private func callPythonPlanner(task: String, graph: UIGraph, runDir: URL) async throws -> [String: Any] {
+        let logger = Logger(label: "PythonPlanner")
+        
         // Convert graph to JSON for Python consumption
         let encoder = JSONEncoder()
         encoder.dateEncodingStrategy = .iso8601
-        let graphData = try encoder.encode(graph)
         
-        // Write graph to temporary file
-        let tempGraphFile = URL(fileURLWithPath: "/tmp/agently_graph.json")
-        try graphData.write(to: tempGraphFile)
+        let tempGraphFile: URL
+        do {
+            let graphData = try encoder.encode(graph)
+            logger.debug("Successfully encoded graph to JSON, size: \(graphData.count) bytes")
+            
+            // Write graph to temporary file
+            tempGraphFile = URL(fileURLWithPath: "/tmp/agently_graph.json")
+            try graphData.write(to: tempGraphFile)
+            logger.debug("Successfully wrote graph to: \(tempGraphFile.path)")
+            
+            // Verify file exists
+            if FileManager.default.fileExists(atPath: tempGraphFile.path) {
+                logger.debug("Graph file exists at: \(tempGraphFile.path)")
+            } else {
+                logger.error("Graph file was not created at: \(tempGraphFile.path)")
+                throw AgentlyError.planningFailed("Failed to create graph file")
+            }
+        } catch {
+            logger.error("Failed to encode or write graph: \(error)")
+            throw AgentlyError.planningFailed("Graph encoding failed: \(error)")
+        }
+        
+        // Write task to temporary file to avoid shell escaping issues
+        let tempTaskFile = URL(fileURLWithPath: "/tmp/agently_task.txt")
+        try task.write(to: tempTaskFile, atomically: true, encoding: .utf8)
+        logger.debug("Wrote task to: \(tempTaskFile.path)")
         
         // Call Python planner script using virtual environment
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/bin/bash")
         let llmLoggingFlag = enableLlmLogging ? " --enable-llm-logging --log-dir '\(runDir.path)'" : ""
-        process.arguments = ["-c", "cd \(FileManager.default.currentDirectoryPath) && source venv/bin/activate && python3 -m planner.main --task '\(task)' --graph '\(tempGraphFile.path)'\(llmLoggingFlag)"]
+        process.arguments = ["-c", "cd \(FileManager.default.currentDirectoryPath) && source venv/bin/activate && python3 -m planner.main --task-file '\(tempTaskFile.path)' --graph '\(tempGraphFile.path)'\(llmLoggingFlag)"]
         
         let outputPipe = Pipe()
         let errorPipe = Pipe()
@@ -314,7 +480,6 @@ struct AgentlyRunner: AsyncParsableCommand {
         
         // Log stderr for debugging
         if let errorOutput = String(data: errorData, encoding: .utf8), !errorOutput.isEmpty {
-            let logger = Logger(label: "PythonPlanner")
             logger.debug("Python planner stderr: \(errorOutput)")
         }
         
@@ -326,7 +491,6 @@ struct AgentlyRunner: AsyncParsableCommand {
         try? FileManager.default.removeItem(at: tempGraphFile)
         
         // Debug the actual output
-        let logger = Logger(label: "PythonPlanner")
         logger.debug("Python planner stdout: \(output)")
         
         // Check for process exit code
@@ -531,11 +695,81 @@ struct AgentlyRunner: AsyncParsableCommand {
         return rawId
     }
     
-
-    
-
-    
-
+    private func verifyStep(
+        stepDescription: String,
+        actionType: String,
+        actionDescription: String,
+        runDir: URL
+    ) async throws -> VerificationResult {
+        let logger = Logger(label: "StepVerification")
+        logger.info("Verifying step: \(stepDescription)")
+        
+        // Call Python verification script
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/bin/bash")
+        
+        // Use virtual environment
+        let verifyScript = URL(fileURLWithPath: "planner/verify_step.py")
+        
+        let arguments = [
+            "-c",
+            "source venv/bin/activate && python \(verifyScript.path) --step-description '\(stepDescription)' --action-type '\(actionType)' --action-description '\(actionDescription)' --run-dir '\(runDir.path)'"
+        ]
+        
+        process.arguments = arguments
+        process.currentDirectoryURL = URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
+        
+        let outputPipe = Pipe()
+        let errorPipe = Pipe()
+        process.standardOutput = outputPipe
+        process.standardError = errorPipe
+        
+        try process.run()
+        process.waitUntilExit()
+        
+        let outputData = outputPipe.fileHandleForReading.readDataToEndOfFile()
+        let errorData = errorPipe.fileHandleForReading.readDataToEndOfFile()
+        
+        guard let output = String(data: outputData, encoding: .utf8) else {
+            throw AgentlyError.executionFailed("Failed to read verification output")
+        }
+        
+        if let errorOutput = String(data: errorData, encoding: .utf8), !errorOutput.isEmpty {
+            logger.debug("Verification stderr: \(errorOutput)")
+        }
+        
+        if process.terminationStatus != 0 {
+            logger.error("Verification failed: \(output)")
+            throw AgentlyError.executionFailed("Verification process failed")
+        }
+        
+        // Parse JSON response (output should be clean JSON now)
+        guard let jsonData = output.data(using: .utf8),
+              let result = try JSONSerialization.jsonObject(with: jsonData) as? [String: Any] else {
+            logger.error("Failed to parse JSON from output: \(output)")
+            throw AgentlyError.executionFailed("Invalid JSON response from verifier")
+        }
+        
+        let success = result["success"] as? Bool ?? false
+        let confidence = result["confidence"] as? Double ?? 0.0
+        let reasoning = result["reasoning"] as? String ?? "No reasoning provided"
+        let shouldRetry = result["should_retry"] as? Bool ?? false
+        let retryReason = result["retry_reason"] as? String ?? "Unknown reason"
+        let screenshotPath = result["screenshot_path"] as? String
+        let uiGraphPath = result["ui_graph_path"] as? String
+        
+        logger.info("Verification result: success=\(success), confidence=\(confidence)")
+        
+        return VerificationResult(
+            success: success,
+            confidence: confidence,
+            reasoning: reasoning,
+            shouldRetry: shouldRetry,
+            retryReason: retryReason,
+            screenshotPath: screenshotPath,
+            uiGraphPath: uiGraphPath
+        )
+    }
 }
 
 enum OutputFormat: String, ExpressibleByArgument, CaseIterable {

@@ -117,13 +117,25 @@ case "${1:-help}" in
         fi
         check_api_key
         echo "🤖 Executing task: $2"
-        swift run agently-runner --task "$2" | while IFS= read -r line; do
-            echo "$line"
-            # Play ping for each action completion
-            if [[ "$line" == *"Action completed successfully"* ]]; then
-                play_step_chime
-            fi
-        done
+        
+        # Check if verbose flag is provided
+        if [ "$3" = "--verbose" ]; then
+            swift run agently-runner --task "$2" --verbose | while IFS= read -r line; do
+                echo "$line"
+                # Play ping for each action completion
+                if [[ "$line" == *"Action completed successfully"* ]]; then
+                    play_step_chime
+                fi
+            done
+        else
+            swift run agently-runner --task "$2" | while IFS= read -r line; do
+                echo "$line"
+                # Play ping for each action completion
+                if [[ "$line" == *"Action completed successfully"* ]]; then
+                    play_step_chime
+                fi
+            done
+        fi
         play_completion_chime
         ;;
     "demo")
