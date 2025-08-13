@@ -67,6 +67,21 @@ class StepVerifier:
         start_time = time.time()
         self.logger.info(f"Verifying step: {step_description}")
         
+        # 0. Quick check for simple actions that don't need verification
+        simple_actions = ["wait", "delay", "sleep"]
+        if any(simple_action in action_type.lower() for simple_action in simple_actions):
+            self.logger.info("⏭️ Skipping verification for simple action")
+            return VerificationResult(
+                success=True,
+                confidence=1.0,
+                reasoning="Simple action - no verification needed",
+                should_retry=False,
+                retry_reason="",
+                screenshot_path="",
+                ui_graph_path=None,
+                plan_update=None
+            )
+        
         # 1. Capture screenshot
         screenshot_start = time.time()
         screenshot_path = self._capture_screenshot(run_dir)
@@ -89,9 +104,9 @@ class StepVerifier:
         llm_duration = time.time() - llm_start
         self.logger.info(f"🤖 LLM validation completed in {llm_duration:.2f}s")
         
-        # 4. Perform state analysis for plan updates (only if verification failed or for complex tasks)
+        # 4. Perform state analysis for plan updates (only if verification failed or for very complex tasks)
         plan_update = None
-        if user_task and completed_actions and (not verification_result.success or len(completed_actions) > 3):
+        if user_task and completed_actions and (not verification_result.success or len(completed_actions) > 5):
             try:
                 analysis_start = time.time()
                 plan_update = self.analyze_state_and_suggest_plan(
@@ -128,12 +143,12 @@ class StepVerifier:
             
             # Use macOS screencapture command
             timestamp = int(time.time())
-            temp_screenshot_path = os.path.join(run_dir, f"temp_screenshot_{timestamp}.png")
-            final_screenshot_path = os.path.join(run_dir, f"verification_screenshot_{timestamp}.png")
+            temp_screenshot_path = os.path.join(run_dir, f"temp_screenshot_{timestamp}.jpg")
+            final_screenshot_path = os.path.join(run_dir, f"verification_screenshot_{timestamp}.jpg")
             
-            # Capture screenshot
+            # Capture screenshot with reduced quality for faster processing
             result = subprocess.run([
-                'screencapture', '-x', temp_screenshot_path
+                'screencapture', '-x', '-t', 'jpg', temp_screenshot_path
             ], capture_output=True, text=True)
             
             if result.returncode == 0:
@@ -154,7 +169,7 @@ class StepVerifier:
             self.logger.error(f"Error capturing screenshot: {e}")
             return ""
     
-    def _resize_screenshot(self, input_path: str, output_path: str, max_width: int = 800, max_height: int = 600):
+    def _resize_screenshot(self, input_path: str, output_path: str, max_width: int = 600, max_height: int = 450):
         """Resize screenshot to reduce file size while maintaining aspect ratio."""
         try:
             from PIL import Image
@@ -164,8 +179,8 @@ class StepVerifier:
                 width, height = img.size
                 
                 if width <= max_width and height <= max_height:
-                    # Image is already small enough, just copy it
-                    img.save(output_path, 'PNG', optimize=True, quality=85)
+                    # Image is already small enough, just compress it
+                    img.save(output_path, 'JPEG', quality=60, optimize=True)
                     return
                 
                 # Calculate scaling factor
@@ -176,8 +191,8 @@ class StepVerifier:
                 # Resize image
                 resized_img = img.resize((new_width, new_height), Image.Resampling.LANCZOS)
                 
-                # Save with compression
-                resized_img.save(output_path, 'PNG', optimize=True, quality=85)
+                # Save with aggressive compression for faster processing
+                resized_img.save(output_path, 'JPEG', quality=60, optimize=True)
                 
                 self.logger.debug(f"Resized screenshot from {width}x{height} to {new_width}x{new_height}")
                 
@@ -232,30 +247,19 @@ class StepVerifier:
     ) -> str:
         """Generate a validation prompt for the step."""
         
-        prompt = f"""
-You are a verification system for macOS automation. Analyze the screenshot and determine if the step was completed successfully.
+        prompt = f"""Verify if this step was completed successfully:
 
-STEP TO VERIFY: {step_description}
-ACTION PERFORMED: {action_type} - {action_description}
+STEP: {step_description}
+ACTION: {action_type} - {action_description}
 
-Based on the current screenshot, determine if the step was completed successfully.
-
-Consider:
-1. What the step was supposed to accomplish
-2. Whether the current screen state reflects successful completion
-3. Any visual indicators that the step worked
-
-Respond with a JSON object in this exact format:
+Based on the screenshot, respond with JSON:
 {{
     "success": true/false,
     "confidence": 0.0-1.0,
-    "reasoning": "Brief explanation of why the step succeeded or failed",
-    "visual_evidence": "Description of what you see that supports your conclusion",
-    "suggested_next_action": "If failed, what should be tried next"
-}}
-
-Be strict but fair. If you're unsure, mark success as false and explain your uncertainty.
-"""
+    "reasoning": "Brief explanation",
+    "visual_evidence": "What you see",
+    "suggested_next_action": "If failed, what to try next"
+}}"""
         return prompt
     
     def _perform_llm_validation(
@@ -296,12 +300,12 @@ Be strict but fair. If you're unsure, mark success as false and explain your unc
                         }
                     })
             
-            # Call OpenAI with structured output using GPT-5-mini
+            # Call OpenAI with structured output using GPT-4o-mini (faster)
             response = self.client.chat.completions.create(
-                model="gpt-5-mini",
+                model="gpt-4o-mini",
                 messages=messages,
                 response_format={"type": "json_object"},
-                max_completion_tokens=1000
+                max_completion_tokens=300
             )
             
             # Parse the JSON response
@@ -521,10 +525,10 @@ Be specific and actionable in your suggestions.
             
             # Call OpenAI with structured output
             response = self.client.chat.completions.create(
-                model="gpt-5-mini",
+                model="gpt-4o-mini",
                 messages=messages,
                 response_format={"type": "json_object"},
-                max_completion_tokens=1500
+                max_completion_tokens=500
             )
             
             # Parse the JSON response
