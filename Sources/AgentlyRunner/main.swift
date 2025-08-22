@@ -299,7 +299,7 @@ struct AgentlyRunner: AsyncParsableCommand {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/bin/bash")
         let llmLoggingFlag = enableLlmLogging ? " --enable-llm-logging --log-dir '\(runDir.path)'" : ""
-        process.arguments = ["-c", "cd \(FileManager.default.currentDirectoryPath) && source venv/bin/activate && python3 -m planner.main --task '\(task)' --graph '\(tempGraphFile.path)'\(llmLoggingFlag)"]
+        process.arguments = ["-c", "cd \(FileManager.default.currentDirectoryPath) && source venv/bin/activate && venv/bin/python3 -m planner.main --task '\(task)' --graph '\(tempGraphFile.path)'\(llmLoggingFlag)"]
         
         let outputPipe = Pipe()
         let errorPipe = Pipe()
@@ -384,7 +384,7 @@ struct AgentlyRunner: AsyncParsableCommand {
         let escapedTask = task.replacingOccurrences(of: "'", with: "'\"'\"'")
         let escapedError = error.replacingOccurrences(of: "'", with: "'\"'\"'")
         
-        process.arguments = ["-c", "cd '\(FileManager.default.currentDirectoryPath)' && source venv/bin/activate && python3 -m planner.main --task '\(escapedTask)' --graph '\(tempGraphFile.path)' --recovery --failed-action-file '\(tempFailedActionFile.path)' --error-message '\(escapedError)' --completed-actions-file '\(tempCompletedActionsFile.path)'\(llmLoggingFlag)"]
+        process.arguments = ["-c", "cd '\(FileManager.default.currentDirectoryPath)' && source venv/bin/activate && venv/bin/python3 -m planner.main --task '\(escapedTask)' --graph '\(tempGraphFile.path)' --recovery --failed-action-file '\(tempFailedActionFile.path)' --error-message '\(escapedError)' --completed-actions-file '\(tempCompletedActionsFile.path)'\(llmLoggingFlag)"]
         
         let outputPipe = Pipe()
         let errorPipe = Pipe()

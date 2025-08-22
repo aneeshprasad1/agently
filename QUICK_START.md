@@ -46,7 +46,7 @@ export OPENAI_API_KEY="your_api_key_here"
 3. Click **"+"** and add:
    - Your terminal app (Terminal.app or iTerm2)
    - Python executable (usually `/usr/bin/python3`)
-   - The built `agently-runner` binary
+   - The built `agently` binary
 
 ### 4. Test the Installation
 

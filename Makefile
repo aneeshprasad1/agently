@@ -97,15 +97,15 @@ precommit: format lint test-swift
 # Development targets
 preflight: build
 	@echo "Running accessibility preflight check..."
-	swift run agently-runner --preflight
+	swift run agently --preflight
 
 graph:
 	@echo "Building and displaying UI graph..."
-	swift run agently-runner --graph-only
+	swift run agently --graph-only
 
 demo-task:
 	@echo "Running demo task..."
-	swift run agently-runner --task "Open Calculator and calculate 2 + 2"
+	swift run agently --task "Open Calculator and calculate 2 + 2"
 
 # Utility targets
 clean:
@@ -127,7 +127,7 @@ setup-dev: deps
 package: build-release
 	@echo "Packaging release..."
 	@mkdir -p dist/
-	cp .build/release/agently-runner dist/
+	cp .build/release/agently dist/
 	@echo "Package created in dist/"
 
 # Status check
@@ -146,4 +146,4 @@ status:
 	fi
 	@echo ""
 	@echo "Build Swift package: make build"
-	@echo "Run a task: swift run agently-runner --task 'your task'"
+	@echo "Run a task: swift run agently --task 'your task'"

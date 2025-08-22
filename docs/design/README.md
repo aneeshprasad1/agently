@@ -22,6 +22,7 @@ This directory contains all architectural and design documentation for the Agent
 | Document | Purpose | Status | Last Updated |
 |----------|---------|--------|--------------|
 | [**BENCHMARKING_PLAN.md**](./BENCHMARKING_PLAN.md) | Benchmarking infrastructure and testing strategy | Active | - |
+| [**OSWORLD_INTERFACE.md**](./OSWORLD_INTERFACE.md) | OSWorld evaluation framework integration and testing | Active | - |
 
 ### Development & Operations
 
@@ -35,6 +36,7 @@ This directory contains all architectural and design documentation for the Agent
 - **New to the project?** Start with [SYSTEM_ARCHITECTURE.md](./SYSTEM_ARCHITECTURE.md)
 - **Working on performance?** See [PERFORMANCE_OPTIMIZATION_PLAN.md](./PERFORMANCE_OPTIMIZATION_PLAN.md)
 - **Setting up benchmarks?** Check [BENCHMARKING_PLAN.md](./BENCHMARKING_PLAN.md)
+- **OSWorld testing?** Review [OSWORLD_INTERFACE.md](./OSWORLD_INTERFACE.md)
 - **Debugging issues?** Consult [LOGGING_GUIDE.md](./LOGGING_GUIDE.md)
 
 ### For Contributors

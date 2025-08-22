@@ -227,7 +227,7 @@ class TaskRunner:
             
             # Execute the task using the real Swift AgentlyRunner
             cmd = [
-                "swift", "run", "agently-runner",
+                "swift", "run", "agently",
                 "--task", task.description,
                 "--format", "json"
             ]

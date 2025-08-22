@@ -7,7 +7,7 @@ let package = Package(
         .macOS(.v14)
     ],
     products: [
-        .executable(name: "agently-runner", targets: ["AgentlyRunner"])
+        .executable(name: "agently", targets: ["AgentlyRunner"])
     ],
     dependencies: [
         .package(url: "https://github.com/apple/swift-argument-parser", from: "1.3.0"),
