@@ -26,7 +26,7 @@ public class SkillExecutor {
         currentRetryCount = 0
         currentContextSwitchCount = 0
         
-        logger.info("Executing action: \(action.type.rawValue) - \(action.description)")
+        logger.info("Executing action: \(action.actionType.rawValue) - \(action.description)")
         
         // Collect memory usage before execution
         let initialMemoryUsage = getCurrentMemoryUsageMB()
@@ -85,7 +85,7 @@ public class SkillExecutor {
     // MARK: - Action Implementation
     
     private func performAction(_ action: SkillAction, in graph: UIGraph) throws {
-        switch action.type {
+        switch action.actionType {
         case .click:
             try performClick(action, in: graph)
         case .doubleClick:
@@ -560,7 +560,7 @@ public class SkillExecutor {
         // Check if the target element exists and is accessible
         if let element = graph.element(withId: elementId) {
             // Element found - check if it's in a valid state for the action
-            switch action.type {
+            switch action.actionType {
             case .click, .doubleClick, .rightClick:
                 // For click actions, verify element is enabled and has reasonable size
                 let hasValidSize = element.size.width > 0 && element.size.height > 0

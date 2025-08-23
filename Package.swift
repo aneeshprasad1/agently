@@ -42,7 +42,8 @@ let package = Package(
         ),
         .testTarget(
             name: "SkillsTests", 
-            dependencies: ["Skills"]
+            dependencies: ["Skills"],
+            path: "Sources/Tests"
         )
     ]
 )

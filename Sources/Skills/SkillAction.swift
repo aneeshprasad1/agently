@@ -1,20 +1,23 @@
 import Foundation
 import UIGraph
 
-/// Represents a high-level intent action
+/// Represents a parsed computer_13 action
 public struct SkillAction: Codable {
-    public let type: ActionType
-    public let targetElementId: String?
-    public let parameters: [String: String]
-    public let description: String
+    public let actionString: String        // Raw computer_13 string
+    public let actionType: ActionType      // Parsed type for execution
+    public let targetElementId: String?    // Extracted element ID
+    public let parameters: [String: String] // Extracted parameters
+    public let description: String         // Human-readable description
     
     public init(
-        type: ActionType,
+        actionString: String,
+        actionType: ActionType,
         targetElementId: String? = nil,
         parameters: [String: String] = [:],
         description: String
     ) {
-        self.type = type
+        self.actionString = actionString
+        self.actionType = actionType
         self.targetElementId = targetElementId
         self.parameters = parameters
         self.description = description

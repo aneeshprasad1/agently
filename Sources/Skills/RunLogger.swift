@@ -92,7 +92,7 @@ public class RunLogger {
             "total_execution_time": totalTime,
             "actions": executedActions.map { result in
                 [
-                    "type": result.action.type.rawValue,
+                    "type": result.action.actionType.rawValue,
                     "description": result.action.description,
                     "success": result.success,
                     "execution_time": result.executionTime,
@@ -116,7 +116,7 @@ public class RunLogger {
         logText += "## Action Details\\n\\n"
         for (index, result) in executedActions.enumerated() {
             let status = result.success ? "✅" : "❌"
-            logText += "\(index + 1). \(status) **\(result.action.type.rawValue)** - \(result.action.description)\\n"
+            logText += "\(index + 1). \(status) **\(result.action.actionType.rawValue)** - \(result.action.description)\\n"
             if let error = result.errorMessage {
                 logText += "   Error: \(error)\\n"
             }
