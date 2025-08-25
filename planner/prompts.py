@@ -69,6 +69,9 @@ IMPORTANT: Always respond with computer_13 action format. For example:
 - key_press("Command+Space")
 - wait("2")
 
+CRITICAL: Respond with ONLY valid JSON - no comments, no explanations outside the JSON structure.
+The response must be parseable by a JSON parser. Do not include // or /* */ comments anywhere in your response.
+
 Always respond with a JSON plan containing an array of computer_13 actions.""",
         required_variables=[]
     )

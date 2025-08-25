@@ -437,6 +437,13 @@ public class SkillExecutor {
         case "m": return 0x2E
         case ".": return 0x2F
         case " ": return 0x31
+        
+        // Mathematical operators
+        case "+": return 0x18  // Same as equals on most keyboards
+        case "*": return 0x1E  // Same as right bracket
+        case "(": return 0x21  // Same as left bracket
+        case ")": return 0x1E  // Same as right bracket
+        
         default:
             throw SkillError.unsupportedCharacter(character)
         }
@@ -498,6 +505,15 @@ public class SkillExecutor {
         case "7": return 0x1A
         case "8": return 0x1C
         case "9": return 0x19
+        
+        // Mathematical operators
+        case "+", "plus": return 0x18
+        case "-", "minus": return 0x1B
+        case "*", "multiply": return 0x1E
+        case "/", "divide": return 0x1F
+        case "=", "equals": return 0x18  // Same as plus on most keyboards
+        case ".": return 0x2F
+        case ",": return 0x2B
         
         default:
             throw SkillError.unsupportedKey(keyName)

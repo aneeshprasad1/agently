@@ -71,6 +71,37 @@ class AgentlyPlanner:
         self.client = OpenAI(api_key=api_key)
         logger.info(f"Initialized planner with model: {model}")
     
+    def _clean_json_response(self, response: str) -> str:
+        """Clean and prepare JSON response for parsing."""
+        if not response or not response.strip():
+            raise ValueError("Empty response from LLM")
+        
+        # Strip markdown code blocks if present
+        clean_response = response.strip()
+        if clean_response.startswith('```json'):
+            clean_response = clean_response[7:]  # Remove '```json'
+        if clean_response.startswith('```'):
+            clean_response = clean_response[3:]   # Remove '```'
+        if clean_response.endswith('```'):
+            clean_response = clean_response[:-3]  # Remove trailing '```'
+        clean_response = clean_response.strip()
+        
+        # Remove any JavaScript-style comments that might have been generated
+        import re
+        clean_response = re.sub(r'//.*$', '', clean_response, flags=re.MULTILINE)
+        clean_response = re.sub(r'/\*.*?\*/', '', clean_response, flags=re.DOTALL)
+        
+        # Remove trailing commas before closing brackets/braces
+        clean_response = re.sub(r',(\s*[}\]])', r'\1', clean_response)
+        
+        # Try to find JSON content if the response contains extra text
+        # Look for content between { and } that looks like JSON
+        json_match = re.search(r'\{.*\}', clean_response, flags=re.DOTALL)
+        if json_match:
+            clean_response = json_match.group(0)
+        
+        return clean_response
+
     def generate_plan(self, context: PlanningContext) -> ActionPlan:
         """Generate an action plan for the given context."""
         logger.info(f"Generating plan for task: {context.task}")
@@ -95,24 +126,14 @@ class AgentlyPlanner:
             )
             
             # Parse and validate response
-            if not response or not response.strip():
-                raise ValueError("Empty response from LLM")
-            
             try:
-                # Strip markdown code blocks if present
-                clean_response = response.strip()
-                if clean_response.startswith('```json'):
-                    clean_response = clean_response[7:]  # Remove '```json'
-                if clean_response.startswith('```'):
-                    clean_response = clean_response[3:]   # Remove '```'
-                if clean_response.endswith('```'):
-                    clean_response = clean_response[:-3]  # Remove trailing '```'
-                clean_response = clean_response.strip()
-                
+                clean_response = self._clean_json_response(response)
+                logger.debug(f"Cleaned response: {repr(clean_response)}")
                 plan_data = json.loads(clean_response)
             except json.JSONDecodeError as e:
                 logger.error(f"JSON decode error: {e}")
-                logger.error(f"Response that failed to parse: {repr(response)}")
+                logger.error(f"Original response: {repr(response)}")
+                logger.error(f"Cleaned response: {repr(clean_response)}")
                 raise ValueError(f"Invalid JSON response: {e}")
             plan = ActionPlan(
                 reasoning=plan_data.get("reasoning", ""),
@@ -159,20 +180,16 @@ class AgentlyPlanner:
                 conversation_type="error_recovery"
             )
             
-            if not response or not response.strip():
-                raise ValueError("Empty response from LLM")
-            
-            # Strip markdown code blocks if present
-            clean_response = response.strip()
-            if clean_response.startswith('```json'):
-                clean_response = clean_response[7:]
-            if clean_response.startswith('```'):
-                clean_response = clean_response[3:]
-            if clean_response.endswith('```'):
-                clean_response = clean_response[:-3]
-            clean_response = clean_response.strip()
-            
-            recovery_data = json.loads(clean_response)
+            try:
+                clean_response = self._clean_json_response(response)
+                recovery_data = json.loads(clean_response)
+            except Exception as e:
+                logger.error(f"Failed to parse recovery response: {e}")
+                return ActionPlan(
+                    reasoning=f"Recovery planning failed: {str(e)}",
+                    actions=[],
+                    confidence=0.0
+                )
             
             return ActionPlan(
                 reasoning=recovery_data.get("recovery_strategy", ""),
