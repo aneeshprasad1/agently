@@ -126,32 +126,6 @@ public class RunLogger {
         try logText.write(to: runDir.appendingPathComponent("execution_log.md"), atomically: true, encoding: .utf8)
     }
     
-    /// Saves a UI graph to a standalone directory (for --graph-only mode).
-    /// - Parameters:
-    ///   - graph: The UI graph to save
-    ///   - filename: Base filename (without extension)
-    ///   - directory: The directory to save to
-    /// - Throws: Error if saving fails
-    public func saveGraphToFile(_ graph: UIGraph, filename: String, directory: URL) throws {
-        let encoder = JSONEncoder()
-        encoder.outputFormatting = .prettyPrinted
-        encoder.dateEncodingStrategy = .iso8601
-        
-        let data = try encoder.encode(graph)
-        
-        // Save full graph
-        let fullGraphFile = directory.appendingPathComponent("\(filename).json")
-        try data.write(to: fullGraphFile)
-        
-        // Also save a summary with application breakdown
-        let summary = createGraphSummary(graph)
-        let summaryFile = directory.appendingPathComponent("\(filename)_summary.txt")
-        try summary.write(to: summaryFile, atomically: true, encoding: .utf8)
-        
-        print("📊 Saved graph (\(graph.elements.count) elements) to: \(fullGraphFile.path)")
-        print("📋 Saved summary to: \(summaryFile.path)")
-    }
-    
     /// Creates a human-readable summary of a UI graph.
     /// - Parameter graph: The UI graph to summarize
     /// - Returns: A formatted string summary

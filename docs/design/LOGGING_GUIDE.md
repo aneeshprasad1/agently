@@ -26,8 +26,6 @@ logs/
 │   │   ├── execution_log.md                 # Human-readable execution summary
 │   │   └── results_summary.json            # Machine-readable results
 │   └── 2025-01-18_15-15-22_find-file/
-├── standalone_graphs/                       # For --graph-only mode
-│   └── accessibility_graph_1754682560.json
 └── archived/                               # Optional: move old runs here
 ```
 
@@ -164,7 +162,7 @@ swift run agently --task "open calendar app"
 # Enable LLM conversation logging for debugging (slower but detailed)
 swift run agently --task "open calendar app" --enable-llm-logging
 
-# Graph-only mode - saves to standalone_graphs/
+# Graph-only mode - saves to run directories
 swift run agently --graph-only
 
 # Verbose mode for extra detail

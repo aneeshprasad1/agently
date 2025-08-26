@@ -97,13 +97,23 @@ struct AgentlyRunner: AsyncParsableCommand {
         let graphBuilder = AccessibilityGraphBuilder()
         let graph = try graphBuilder.buildGraph()
         
-        // Always save to standalone graphs directory for --graph-only mode
-        let standaloneDir = URL(fileURLWithPath: "logs/standalone_graphs")
-        try FileManager.default.createDirectory(at: standaloneDir, withIntermediateDirectories: true)
-        
-        let timestamp = Int(Date().timeIntervalSince1970)
+        // Create a proper run directory structure for graph-only mode
         let runLogger = RunLogger()
-        try runLogger.saveGraphToFile(graph, filename: "accessibility_graph_\(timestamp)", directory: standaloneDir)
+        
+        // Use provided task description or create a descriptive default based on active application
+        let taskDescription: String
+        if let task = task {
+            taskDescription = task
+        } else {
+            let appName = graph.activeApplication ?? "unknown-app"
+            taskDescription = "graph-snapshot-\(appName.lowercased().replacingOccurrences(of: " ", with: "-"))"
+        }
+        
+        let runDir = try runLogger.createRunDirectory(task: taskDescription)
+        logger.info("Created graph-only run directory: \(runDir.path)")
+        
+        // Save the graph to the run directory structure
+        try runLogger.saveGraphToRunDirectory(graph, filename: "00_graph_snapshot", runDir: runDir)
         
         switch format {
         case .json:
@@ -117,9 +127,10 @@ struct AgentlyRunner: AsyncParsableCommand {
             }
             
         case .text:
-            let runLogger = RunLogger()
             runLogger.printGraphSummary(graph)
         }
+        
+        logger.info("📁 Graph saved to run directory: \(runDir.path)")
     }
     
     private func executeTask(_ taskDescription: String) async throws {
