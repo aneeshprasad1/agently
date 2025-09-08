@@ -13,6 +13,9 @@ import os
 from typing import Dict, List, Tuple, Optional, Any
 from pathlib import Path
 
+import sys
+from pathlib import Path
+sys.path.append(str(Path(__file__).parent.parent))
 from planner.planner import AgentlyPlanner, PlanningContext
 
 
@@ -158,7 +161,11 @@ class AgentlyAgent:
             'task_history_count': len(self.task_history),
             'action_history_count': len(self.action_history),
             'observation_history_count': len(self.observation_history),
-            'config': self.config
+            'config': {
+                'max_tokens': self.max_tokens,
+                'temperature': self.temperature,
+                'top_p': self.top_p
+            }
         }
 
 

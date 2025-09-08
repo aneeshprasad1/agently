@@ -4,11 +4,11 @@ This package provides OSWorld integration for Agently, allowing you to use Agent
 
 ## 📍 Location & Usage
 
-**This integration is located in the `osworld/` directory but can be used from anywhere in the project:**
+**This integration is located in the `osworld_integration/` directory but can be used from anywhere in the project:**
 
 - **Import**: `from osworld import AgentlyAgent`
-- **Run tests**: `python osworld/test_osworld_agent.py`
-- **Run demo**: `python osworld/run_osworld_agently.py --mode test`
+- **Run tests**: `python osworld_integration/test_osworld_agent.py`
+- **Run demo**: `python osworld_integration/run_osworld_agently.py --mode test`
 - **Example usage**: `python example_osworld_usage.py` (from root directory)
 
 ## Overview
@@ -27,10 +27,10 @@ You can use the OSWorld integration directly from the project root:
 python example_osworld_usage.py
 
 # Run tests
-python osworld/test_osworld_agent.py
+python osworld_integration/test_osworld_agent.py
 
 # Run demo
-python osworld/run_osworld_agently.py --mode test
+python osworld_integration/run_osworld_agently.py --mode test
 ```
 
 **Import the agent from anywhere:**
@@ -54,7 +54,7 @@ agent = AgentlyAgent(
 ## Package Structure
 
 ```
-osworld/
+osworld_integration/
 ├── __init__.py                    # Package initialization
 ├── osworld_agent.py              # Main agent implementation
 ├── run_osworld_agently.py        # Custom run script
@@ -76,10 +76,10 @@ Run the test suite to verify everything works:
 
 ```bash
 # From the root directory
-python osworld/test_osworld_agent.py
+python osworld_integration/test_osworld_agent.py
 
-# Or from within the osworld directory
-cd osworld && python test_osworld_agent.py
+# Or from within the osworld_integration directory
+cd osworld_integration && python test_osworld_agent.py
 ```
 
 ### 3. Run Standalone Demo
@@ -88,10 +88,10 @@ Test the agent with a simulated calculator interface:
 
 ```bash
 # From the root directory
-python osworld/run_osworld_agently.py --mode test --verbose
+python osworld_integration/run_osworld_agently.py --mode test --verbose
 
-# Or from within the osworld directory
-cd osworld && python run_osworld_agently.py --mode test --verbose
+# Or from within the osworld_integration directory
+cd osworld_integration && python run_osworld_agently.py --mode test --verbose
 ```
 
 ### 4. OSWorld Integration
@@ -103,7 +103,7 @@ For full OSWorld integration, you'll need to install OSWorld separately:
 pip install osworld
 
 # Run with OSWorld integration
-python osworld/run_osworld_agently.py --mode osworld --provider vmware
+python osworld_integration/run_osworld_agently.py --mode osworld --provider vmware
 ```
 
 ## Usage
